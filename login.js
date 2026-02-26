@@ -1,10 +1,13 @@
 require("dotenv").config();
 const express = require("express");
+const multer = require("multer");
+const path = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const oracledb = require("oracledb");
 
 const { connectDB, getConnection } = require("./database/connection");
 const authMiddleware=require("./Middleware/authMiddleware");
@@ -13,6 +16,19 @@ console.log(authMiddleware);
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use("/uploads", express.static("uploads"));
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/");
+  },
+  filename: function (req, file, cb) {
+    const uniqueName =file.originalname;
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({ storage });
 
 
 app.post("/register", async (req, res) => {
@@ -210,6 +226,130 @@ app.post("/reset-password", async (req, res) => {
     );
 
     res.json({ message: "Password reset successful" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) => {
+  try {
+    const connection = getConnection();
+
+    const { title, description, price, quantity, category_id } = req.body;
+
+    if (!title || !price || !category_id) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Insert item
+    const result = await connection.execute(
+      `INSERT INTO items 
+       (seller_user_id, category_id, title, description, price, quantity)
+       VALUES (:seller_user_id, :category_id, :title, :description, :price, :quantity)
+       RETURNING item_id INTO :item_id`,
+      {
+        seller_user_id: req.user.user_id,
+        category_id,
+        title,
+        description,
+        price,
+        quantity: quantity || 1,
+        item_id: { dir: require("oracledb").BIND_OUT, type: require("oracledb").NUMBER }
+      },
+      { autoCommit: true }
+    );
+
+    const itemId = result.outBinds.item_id[0];
+
+    // Insert images
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const imageUrl = `/uploads/${file.filename}`;
+
+        await connection.execute(
+          `INSERT INTO item_images (item_id, image_url)
+           VALUES (:item_id, :image_url)`,
+          { item_id: itemId, image_url: imageUrl },
+          { autoCommit: true }
+        );
+      }
+    }
+
+    res.status(201).json({
+      message: "Item listed successfully",
+      item_id: itemId
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// app.get("/categories", async (req, res) => {
+//   try {
+//     const connection = getConnection();
+
+//     const result = await connection.execute(
+//       `SELECT category_id, category_name FROM categories`
+//     );
+
+//     res.json(result.rows);
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
+app.get("/categories", authMiddleware,async (req, res) => {
+  try {
+    const connection = getConnection();
+
+    const result = await connection.execute(
+      `SELECT category_id, category_name
+       FROM categories
+       WHERE parent_category_id IS NULL
+       ORDER BY category_name`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.get("/categories/:id/items", authMiddleware,async (req, res) => {
+  try {
+    const connection = getConnection();
+    const categoryId = parseInt(req.params.id);
+
+    const result = await connection.execute(
+      `
+      SELECT i.item_id,
+             i.title,
+             i.price,
+             i.created_at,
+             (SELECT image_url
+              FROM item_images
+              WHERE item_id = i.item_id
+              FETCH FIRST 1 ROWS ONLY) AS image_url
+      FROM items i
+      WHERE i.category_id = :category_id
+        AND i.status = 'AVAILABLE'
+      ORDER BY i.created_at DESC
+      `,
+      { category_id: categoryId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    res.json(result.rows);
 
   } catch (err) {
     console.error(err);

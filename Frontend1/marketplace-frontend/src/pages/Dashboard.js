@@ -1,44 +1,92 @@
-import React from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import CategoryCard from "../components/CategoryCard";
 
 function Dashboard() {
+  const [categories, setCategories] = useState([]);
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
-  const handleLogout = async () => {
-    try {
-      await axios.get("http://localhost:5000/logout", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch (err) {
-      console.log("Logout route error (safe to ignore)");
-    }
-
-    // Remove token locally
+  const handleLogout = () => {
     localStorage.removeItem("token");
-
-    // Redirect to login
     navigate("/");
   };
 
+  useEffect(() => {
+    axios
+      .get("http://localhost:5000/categories", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => setCategories(res.data))
+      .catch((err) => console.log(err));
+  }, []);
+
   return (
-    <div className="container">
-      <div className="card">
-        <h2>🎉 Dashboard</h2>
-        <p>You are successfully logged in.</p>
+    <div style={styles.container}>
+      <h1 style={{ color: "white", marginBottom: "30px" }}>
+        🎉 Dashboard
+      </h1>
+
+      <div style={{ marginBottom: "30px", display: "flex", gap: "15px" }}>
+        <button
+          onClick={() => navigate("/sell")}
+          style={styles.sellBtn}
+        >
+          ➕ Sell an Item
+        </button>
 
         <button
           onClick={handleLogout}
-          style={{ marginTop: "20px", background: "#ff4d4d" }}
+          style={styles.logoutBtn}
         >
           Logout
         </button>
       </div>
+
+      <h2 style={{ color: "white", marginBottom: "20px" }}>
+        Explore Categories 🚀
+      </h2>
+
+      <div style={styles.grid}>
+        {categories.map((cat) => (
+          <CategoryCard
+            key={cat.CATEGORY_ID}
+            category={cat}
+            onClick={() => navigate(`/category/${cat.CATEGORY_ID}`)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
+
+const styles = {
+  container: {
+    minHeight: "100vh",
+    padding: "40px",
+    background: "linear-gradient(135deg, #667eea, #764ba2)",
+  },
+  grid: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "30px",
+    justifyContent: "center",
+  },
+  sellBtn: {
+    background: "#4CAF50",
+    padding: "10px 20px",
+    borderRadius: "8px",
+    border: "none",
+    cursor: "pointer",
+  },
+  logoutBtn: {
+    background: "#ff4d4d",
+    padding: "10px 20px",
+    borderRadius: "8px",
+    border: "none",
+    cursor: "pointer",
+  },
+};
 
 export default Dashboard;
