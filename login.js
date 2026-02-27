@@ -8,6 +8,7 @@ const cors = require("cors");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const oracledb = require("oracledb");
+oracledb.fetchAsString = [oracledb.DATE, oracledb.NUMBER,oracledb.CLOB];
 
 const { connectDB, getConnection } = require("./database/connection");
 const authMiddleware=require("./Middleware/authMiddleware");
@@ -350,6 +351,169 @@ app.get("/categories/:id/items", authMiddleware,async (req, res) => {
     );
 
     res.json(result.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.get("/items/:id", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+    const itemId = parseInt(req.params.id);
+
+    // 1️⃣ Get item details
+    const itemResult = await connection.execute(
+      `
+      SELECT i.item_id,
+             i.title,
+             i.price,
+             i.description,
+             i.quantity,
+             i.avg_rating,
+             i.review_count,
+             u.username AS seller_name,
+             TO_CHAR(i.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at
+      FROM items i
+      JOIN users u ON i.seller_user_id = u.user_id
+      WHERE i.item_id = :id
+      `,
+      { id: itemId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ message: "Item not found" });
+    }
+
+    // 2️⃣ Get all images
+    const imagesResult = await connection.execute(
+      `
+      SELECT image_url
+      FROM item_images
+      WHERE item_id = :id
+      `,
+      { id: itemId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    // 3️⃣ Get reviews
+    const reviewsResult = await connection.execute(
+      `
+      SELECT r.rating,
+             r.review_text,
+             TO_CHAR(r.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+             u.username
+      FROM reviews r
+      JOIN users u ON r.user_id = u.user_id
+      WHERE r.item_id = :id
+      ORDER BY r.created_at DESC
+      `,
+      { id: itemId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    res.json({
+  item: { ...itemResult.rows[0] },
+  images: imagesResult.rows.map(r => ({ ...r })),
+  reviews: reviewsResult.rows.map(r => ({ ...r }))
+});
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/cart", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+    const { item_id, quantity } = req.body;
+
+    await connection.execute(
+      `
+      MERGE INTO cart c
+      USING dual
+      ON (c.user_id = :user_id AND c.item_id = :item_id)
+      WHEN MATCHED THEN
+        UPDATE SET quantity = c.quantity + :quantity
+      WHEN NOT MATCHED THEN
+        INSERT (user_id, item_id, quantity)
+        VALUES (:user_id, :item_id, :quantity)
+      `,
+      {
+        user_id: req.user.user_id,
+        item_id,
+        quantity
+      },
+      { autoCommit: true }
+    );
+
+    res.json({ message: "Added to cart" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/items/:id/review", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+    const itemId = parseInt(req.params.id);
+    const { rating, review_text } = req.body;
+
+    // 1️⃣ Insert review
+    await connection.execute(
+      `
+      INSERT INTO reviews (user_id, item_id, rating, review_text)
+      VALUES (:user_id, :item_id, :rating, :review_text)
+      `,
+      {
+        user_id: req.user.user_id,
+        item_id: itemId,
+        rating,
+        review_text
+      },
+      { autoCommit: true }
+    );
+
+    // 2️⃣ Recalculate avg rating
+    const ratingResult = await connection.execute(
+      `
+      SELECT ROUND(AVG(rating),1) AS avg_rating,
+             COUNT(*) AS review_count
+      FROM reviews
+      WHERE item_id = :id
+      `,
+      { id: itemId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    const { AVG_RATING, REVIEW_COUNT } = ratingResult.rows[0];
+
+    // 3️⃣ Update item table
+    await connection.execute(
+      `
+      UPDATE items
+      SET avg_rating = :avg_rating,
+          review_count = :review_count
+      WHERE item_id = :id
+      `,
+      {
+        avg_rating: AVG_RATING,
+        review_count: REVIEW_COUNT,
+        id: itemId
+      },
+      { autoCommit: true }
+    );
+
+    res.json({
+      message: "Review added successfully",
+      avg_rating: AVG_RATING,
+      review_count: REVIEW_COUNT
+    });
 
   } catch (err) {
     console.error(err);

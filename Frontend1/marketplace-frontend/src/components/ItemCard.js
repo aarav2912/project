@@ -1,17 +1,24 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 function ItemCard({ item }) {
+  const navigate = useNavigate();
+
   return (
-    <div style={styles.card}>
+    <div
+      style={styles.card}
+      onClick={() => navigate(`/product/${item.ITEM_ID}`)}
+    >
       <img
-  src={
-    item.IMAGE_URL?.startsWith("http://localhost:5000")
-      ? item.IMAGE_URL
-      : `http://localhost:5000${item.IMAGE_URL}`
-  }
-  alt={item.TITLE}
-  style={styles.image}
-/>
+        src={
+          item.IMAGE_URL?.startsWith("http://localhost:5000")
+            ? item.IMAGE_URL
+            : `http://localhost:5000${item.IMAGE_URL}`
+        }
+        alt={item.TITLE}
+        style={styles.image}
+      />
+
       <div style={styles.content}>
         <h4>{item.TITLE}</h4>
         <p>₹ {item.PRICE}</p>
@@ -27,6 +34,8 @@ const styles = {
     borderRadius: "15px",
     overflow: "hidden",
     boxShadow: "0 5px 15px rgba(0,0,0,0.2)",
+    cursor: "pointer", // 👈 makes it feel clickable
+    transition: "transform 0.2s ease",
   },
   image: {
     width: "100%",

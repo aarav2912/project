@@ -8,6 +8,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import SellItem from "./pages/SellItem";
 import CategoryPage from "./pages/CategoryPage";
+import ProductPage from "./pages/ProductPage";
 import "./App.css";
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
               <CategoryPage/>
             </ProtectedRoute>
           } />
+          <Route path="/product/:id" element={<ProductPage />} />
         </Routes>
       </Router>
     </div>
