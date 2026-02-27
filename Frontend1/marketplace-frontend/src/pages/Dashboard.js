@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { jwtDecode } from "jwt-decode";
 import CategoryCard from "../components/CategoryCard";
 
 function Dashboard() {
   const [categories, setCategories] = useState([]);
+  const [username, setUsername] = useState("");
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
@@ -14,6 +16,15 @@ function Dashboard() {
   };
 
   useEffect(() => {
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        setUsername(decoded.username);
+      } catch (err) {
+        console.error("Invalid token");
+      }
+    }
+
     axios
       .get("http://localhost:5000/categories", {
         headers: { Authorization: `Bearer ${token}` },
@@ -25,7 +36,7 @@ function Dashboard() {
   return (
     <div style={styles.container}>
       <h1 style={{ color: "white", marginBottom: "30px" }}>
-        🎉 Dashboard
+        🎉 Welcome {username.substring(0,1).toUpperCase()+username.substring(1,username.length)}
       </h1>
 
       <div style={{ marginBottom: "30px", display: "flex", gap: "15px" }}>

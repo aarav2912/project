@@ -78,7 +78,11 @@ function ProductPage() {
         {/* Image Slider */}
         <div style={{ flex: 1 }}>
           <img
-            src={`http://localhost:5000${images[currentImage]?.IMAGE_URL}`}
+            src={
+              images[currentImage]?.IMAGE_URL?.startsWith("http://localhost:5000")
+              ? images[currentImage]?.IMAGE_URL
+              : `http://localhost:5000${images[currentImage]?.IMAGE_URL}`
+            }
             alt="product"
             style={{ width: "100%", borderRadius: "10px" }}
           />
@@ -87,7 +91,11 @@ function ProductPage() {
             {images.map((img, index) => (
               <img
                 key={index}
-                src={`http://localhost:5000${img.IMAGE_URL}`}
+                src={
+                  img.IMAGE_URL?.startsWith("http://localhost:5000")
+                  ? img.IMAGE_URL
+                  : `http://localhost:5000${img.IMAGE_URL}`
+                }
                 alt="thumb"
                 onClick={() => setCurrentImage(index)}
                 style={{
