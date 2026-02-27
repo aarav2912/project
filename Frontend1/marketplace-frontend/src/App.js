@@ -9,6 +9,7 @@ import ResetPassword from "./pages/ResetPassword";
 import SellItem from "./pages/SellItem";
 import CategoryPage from "./pages/CategoryPage";
 import ProductPage from "./pages/ProductPage";
+import Cart from "./pages/Cart";
 import "./App.css";
 
 function App() {
@@ -42,6 +43,7 @@ function App() {
             </ProtectedRoute>
           } />
           <Route path="/product/:id" element={<ProductPage />} />
+          <Route path="/cart" element={<Cart />} />
         </Routes>
       </Router>
     </div>

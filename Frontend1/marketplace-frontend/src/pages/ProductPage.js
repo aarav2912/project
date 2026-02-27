@@ -56,6 +56,30 @@ function ProductPage() {
     }
   };
 
+  // const token = localStorage.getItem("token");
+
+const handleAddToCart = async () => {
+  try {
+    await axios.post(
+      "http://localhost:5000/cart",
+      {
+        item_id: item.ITEM_ID,
+        quantity: 1
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+
+    alert("🛒 Added to cart!");
+  } catch (err) {
+    console.error(err);
+    alert("Failed to add to cart");
+  }
+};
+
   const renderStars = (rating) => {
     const fullStars = Math.floor(rating || 0);
     return (
@@ -136,7 +160,9 @@ function ProductPage() {
             border: "none",
             borderRadius: "5px"
           }}>
-            Add to Cart
+            <button onClick={handleAddToCart}>
+              Add to Cart
+              </button>
           </button>
         </div>
       </div>

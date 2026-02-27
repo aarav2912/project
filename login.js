@@ -458,6 +458,36 @@ app.post("/cart", authMiddleware, async (req, res) => {
   }
 });
 
+app.get("/cart", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+
+    const result = await connection.execute(
+      `
+      SELECT c.item_id,
+             c.quantity,
+             i.title,
+             i.price,
+             (SELECT image_url
+              FROM item_images
+              WHERE item_id = i.item_id
+              FETCH FIRST 1 ROWS ONLY) AS image_url
+      FROM cart c
+      JOIN items i ON c.item_id = i.item_id
+      WHERE c.user_id = :user_id
+      `,
+      { user_id: req.user.user_id },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 app.post("/items/:id/review", authMiddleware, async (req, res) => {
   try {
     const connection = getConnection();

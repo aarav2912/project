@@ -48,6 +48,13 @@ function Dashboard() {
         </button>
 
         <button
+        onClick={() => navigate("/cart")}
+        style={styles.CartBtn}
+        >
+          🛒 Cart
+        </button>
+
+        <button
           onClick={handleLogout}
           style={styles.logoutBtn}
         >
@@ -86,6 +93,13 @@ const styles = {
   },
   sellBtn: {
     background: "#4CAF50",
+    padding: "10px 20px",
+    borderRadius: "8px",
+    border: "none",
+    cursor: "pointer",
+  },
+  CartBtn: {
+    background: "#cdba28",
     padding: "10px 20px",
     borderRadius: "8px",
     border: "none",
