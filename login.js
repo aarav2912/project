@@ -23,7 +23,7 @@ const storage = multer.diskStorage({
     cb(null, "uploads/");
   },
   filename: function (req, file, cb) {
-    const uniqueName =file.originalname;
+    const uniqueName =Date.now()+ "-" + file.originalname;
     cb(null, uniqueName);
   }
 });
@@ -288,33 +288,12 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
   }
 });
 
-// app.get("/categories", async (req, res) => {
-//   try {
-//     const connection = getConnection();
-
-//     const result = await connection.execute(
-//       `SELECT category_id, category_name FROM categories`
-//     );
-
-//     res.json(result.rows);
-
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// });
-
-app.get("/categories", authMiddleware,async (req, res) => {
+app.get("/categories", async (req, res) => {
   try {
     const connection = getConnection();
 
     const result = await connection.execute(
-      `SELECT category_id, category_name
-       FROM categories
-       WHERE parent_category_id IS NULL
-       ORDER BY category_name`,
-      [],
-      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      `SELECT category_id, category_name FROM categories`
     );
 
     res.json(result.rows);
@@ -324,6 +303,27 @@ app.get("/categories", authMiddleware,async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+// app.get("/categories", authMiddleware,async (req, res) => {
+//   try {
+//     const connection = getConnection();
+
+//     const result = await connection.execute(
+//       `SELECT category_id, category_name
+//        FROM categories
+//        WHERE parent_category_id IS NULL
+//        ORDER BY category_name`,
+//       [],
+//       { outFormat: oracledb.OUT_FORMAT_OBJECT }
+//     );
+
+//     res.json(result.rows);
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
 
 app.get("/categories/:id/items", authMiddleware,async (req, res) => {
   try {

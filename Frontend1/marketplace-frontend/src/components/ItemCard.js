@@ -4,10 +4,14 @@ function ItemCard({ item }) {
   return (
     <div style={styles.card}>
       <img
-        src={`${item.IMAGE_URL}`}
-        alt={item.TITLE}
-        style={styles.image}
-      />
+  src={
+    item.IMAGE_URL?.startsWith("http://localhost:5000")
+      ? item.IMAGE_URL
+      : `http://localhost:5000${item.IMAGE_URL}`
+  }
+  alt={item.TITLE}
+  style={styles.image}
+/>
       <div style={styles.content}>
         <h4>{item.TITLE}</h4>
         <p>₹ {item.PRICE}</p>
