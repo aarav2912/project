@@ -10,6 +10,7 @@ import SellItem from "./pages/SellItem";
 import CategoryPage from "./pages/CategoryPage";
 import ProductPage from "./pages/ProductPage";
 import Cart from "./pages/Cart";
+import Interests from "./pages/Interests";
 import "./App.css";
 
 function App() {
@@ -44,6 +45,8 @@ function App() {
           } />
           <Route path="/product/:id" element={<ProductPage />} />
           <Route path="/cart" element={<Cart />} />
+          <Route path="/interests" element={<ProtectedRoute><Interests /></ProtectedRoute>} />
+          <Route path="/items/:id" element={<ProtectedRoute><ProductPage /></ProtectedRoute>} />
         </Routes>
       </Router>
     </div>

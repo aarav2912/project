@@ -3,6 +3,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
 import CategoryCard from "../components/CategoryCard";
+import AlertBell from "../components/AlertBell";
 
 function Dashboard() {
   const [categories, setCategories] = useState([]);
@@ -55,11 +56,22 @@ function Dashboard() {
         </button>
 
         <button
+        onClick={() => navigate("/interests")}
+        style={{ background: "#2196F3" }}
+        >
+          🎯 Set Interests
+        </button>
+
+        <button
           onClick={handleLogout}
           style={styles.logoutBtn}
         >
           Logout
         </button>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <AlertBell />
       </div>
 
       <h2 style={{ color: "white", marginBottom: "20px" }}>

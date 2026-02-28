@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
+const emailQueue = require("./queues/emailQueue");
 const path = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
@@ -238,13 +239,17 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
   try {
     const connection = getConnection();
 
-    const { title, description, price, quantity, category_id } = req.body;
+    const { title, description } = req.body;
 
-    if (!title || !price || !category_id) {
+    const numericPrice = parseFloat(req.body.price);
+    const numericQuantity = parseInt(req.body.quantity || 1);
+    const numericCategoryId = parseInt(req.body.category_id);
+
+    if (!title || !numericPrice || !numericCategoryId) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Insert item
+    // 🔹 Insert item
     const result = await connection.execute(
       `INSERT INTO items 
        (seller_user_id, category_id, title, description, price, quantity)
@@ -252,11 +257,11 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
        RETURNING item_id INTO :item_id`,
       {
         seller_user_id: req.user.user_id,
-        category_id,
+        category_id: numericCategoryId,
         title,
         description,
-        price,
-        quantity: quantity || 1,
+        price: numericPrice,
+        quantity: numericQuantity,
         item_id: { dir: require("oracledb").BIND_OUT, type: require("oracledb").NUMBER }
       },
       { autoCommit: true }
@@ -264,7 +269,7 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
 
     const itemId = result.outBinds.item_id[0];
 
-    // Insert images
+    // 🔹 Insert images
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const imageUrl = `/uploads/${file.filename}`;
@@ -276,6 +281,61 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
           { autoCommit: true }
         );
       }
+    }
+
+    // 🔎 Find interested users (category + price range)
+    const interestedUsers = await connection.execute(
+      `
+      SELECT ui.user_id, u.email, ui.keyword
+      FROM user_interests ui
+      JOIN users u ON ui.user_id = u.user_id
+      WHERE ui.category_id = :category_id
+        AND :price BETWEEN ui.min_price AND ui.max_price
+      `,
+      {
+        category_id: numericCategoryId,
+        price: numericPrice
+      },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    for (const user of interestedUsers.rows) {
+
+      // 🔍 Keyword filtering (if keyword exists)
+      if (user.KEYWORD) {
+        const lowerTitle = title.toLowerCase();
+        const lowerKeyword = user.KEYWORD.toLowerCase();
+
+        if (!lowerTitle.includes(lowerKeyword)) {
+          continue;
+        }
+      }
+
+      // 🔔 Insert alert
+      await connection.execute(
+        `
+        INSERT INTO alerts (user_id, category_id, item_id, is_read)
+        VALUES (:user_id, :category_id, :item_id, 0)
+        `,
+        {
+          user_id: user.USER_ID,
+          category_id: numericCategoryId,
+          item_id: itemId
+        },
+        { autoCommit: true }
+      );
+
+      // 📧 Send email asynchronously via Redis queue
+      await emailQueue.add({
+        to: user.EMAIL,
+        subject: "New Item Matching Your Interest 🎯",
+        html: `
+          <h3>New Item Found!</h3>
+          <p><b>${title}</b></p>
+          <p>Price: ₹${numericPrice}</p>
+          <p>Login to check it out!</p>
+        `
+      });
     }
 
     res.status(201).json({
@@ -304,27 +364,6 @@ app.get("/categories", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-// app.get("/categories", authMiddleware,async (req, res) => {
-//   try {
-//     const connection = getConnection();
-
-//     const result = await connection.execute(
-//       `SELECT category_id, category_name
-//        FROM categories
-//        WHERE parent_category_id IS NULL
-//        ORDER BY category_name`,
-//       [],
-//       { outFormat: oracledb.OUT_FORMAT_OBJECT }
-//     );
-
-//     res.json(result.rows);
-
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// });
 
 app.get("/categories/:id/items", authMiddleware,async (req, res) => {
   try {
@@ -544,6 +583,91 @@ app.post("/items/:id/review", authMiddleware, async (req, res) => {
       avg_rating: AVG_RATING,
       review_count: REVIEW_COUNT
     });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/interests", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+    const { category_id, min_price, max_price, keyword } = req.body;
+
+    await connection.execute(
+      `
+      INSERT INTO user_interests 
+      (user_id, category_id, min_price, max_price, keyword)
+      VALUES (:user_id, :category_id, :min_price, :max_price, :keyword)
+      `,
+      {
+        user_id: req.user.user_id,
+        category_id,
+        min_price,
+        max_price,
+        keyword: keyword ? keyword.toLowerCase() : null
+      },
+      { autoCommit: true }
+    );
+
+    res.json({ message: "Interest saved successfully" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.get("/alerts", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+
+    const result = await connection.execute(
+      `
+      SELECT a.alert_id,
+             a.item_id,
+             i.title,
+             i.price,
+             a.is_read,
+             TO_CHAR(a.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at
+      FROM alerts a
+      JOIN items i ON a.item_id = i.item_id
+      WHERE a.user_id = :user_id
+      ORDER BY a.created_at DESC
+      `,
+      { user_id: req.user.user_id },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.put("/alerts/:id/read", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+    const alertId = parseInt(req.params.id);
+
+    await connection.execute(
+      `
+      UPDATE alerts
+      SET is_read = 1
+      WHERE alert_id = :alert_id
+        AND user_id = :user_id
+      `,
+      {
+        alert_id: alertId,
+        user_id: req.user.user_id
+      },
+      { autoCommit: true }
+    );
+
+    res.json({ message: "Alert marked as read" });
 
   } catch (err) {
     console.error(err);
