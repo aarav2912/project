@@ -37,35 +37,35 @@ function Dashboard() {
   return (
     <div style={styles.container}>
       <h1 style={{ color: "white", marginBottom: "30px" }}>
-        🎉 Welcome {username.substring(0,1).toUpperCase()+username.substring(1,username.length)}
+        🎉 Welcome{" "}
+        {username.substring(0, 1).toUpperCase() +
+          username.substring(1, username.length)}
       </h1>
 
       <div style={{ marginBottom: "30px", display: "flex", gap: "15px" }}>
-        <button
-          onClick={() => navigate("/sell")}
-          style={styles.sellBtn}
-        >
+        <button onClick={() => navigate("/sell")} style={styles.sellBtn}>
           ➕ Sell an Item
         </button>
 
-        <button
-        onClick={() => navigate("/cart")}
-        style={styles.CartBtn}
-        >
+        <button onClick={() => navigate("/cart")} style={styles.CartBtn}>
           🛒 Cart
         </button>
 
         <button
-        onClick={() => navigate("/interests")}
-        style={{ background: "#2196F3" }}
+          onClick={() => navigate("/orders")}
+          style={styles.ordersBtn}
+        >
+          📦 My Orders
+        </button>
+
+        <button
+          onClick={() => navigate("/interests")}
+          style={styles.interestBtn}
         >
           🎯 Set Interests
         </button>
 
-        <button
-          onClick={handleLogout}
-          style={styles.logoutBtn}
-        >
+        <button onClick={handleLogout} style={styles.logoutBtn}>
           Logout
         </button>
       </div>
@@ -112,6 +112,20 @@ const styles = {
   },
   CartBtn: {
     background: "#cdba28",
+    padding: "10px 20px",
+    borderRadius: "8px",
+    border: "none",
+    cursor: "pointer",
+  },
+  ordersBtn: {
+    background: "#9C27B0",
+    padding: "10px 20px",
+    borderRadius: "8px",
+    border: "none",
+    cursor: "pointer",
+  },
+  interestBtn: {
+    background: "#2196F3",
     padding: "10px 20px",
     borderRadius: "8px",
     border: "none",

@@ -9,6 +9,8 @@ const cors = require("cors");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const oracledb = require("oracledb");
+const Stripe = require("stripe");
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 oracledb.fetchAsString = [oracledb.DATE, oracledb.NUMBER,oracledb.CLOB];
 
 const { connectDB, getConnection } = require("./database/connection");
@@ -17,6 +19,136 @@ console.log(authMiddleware);
 
 const app = express();
 app.use(cors());
+app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const userId = session.metadata.user_id;
+
+    const connection = getConnection();
+
+    try {
+      // 🧾 1️⃣ Get user email
+      const userResult = await connection.execute(
+        `SELECT email FROM users WHERE user_id = :user_id`,
+        { user_id: userId },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+
+      const userEmail = userResult.rows[0]?.EMAIL;
+
+      // 📦 2️⃣ Get order items BEFORE updating anything
+      const itemsResult = await connection.execute(
+        `
+        SELECT i.title, o.quantity, o.total_amount
+        FROM orders o
+        JOIN items i ON o.item_id = i.item_id
+        WHERE o.user_id = :user_id
+          AND o.status = 'PAYMENT_PENDING'
+        `,
+        { user_id: userId },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+
+      // 🔄 3️⃣ Update orders → ORDERED
+      await connection.execute(
+        `
+        UPDATE orders
+        SET status = 'ORDERED'
+        WHERE user_id = :user_id
+          AND status = 'PAYMENT_PENDING'
+        `,
+        { user_id: userId },
+        { autoCommit: true }
+      );
+
+      // 🧹 4️⃣ Clear cart
+      await connection.execute(
+        `
+        DELETE FROM cart
+        WHERE user_id = :user_id
+        `,
+        { user_id: userId },
+        { autoCommit: true }
+      );
+
+      // 💳 5️⃣ Insert payment (latest order reference)
+      await connection.execute(
+        `
+        INSERT INTO payments (order_id, stripe_session_id, amount, payment_status)
+        VALUES (
+          (SELECT MAX(order_id) FROM orders WHERE user_id = :user_id),
+          :session_id,
+          :amount,
+          'SUCCESS'
+        )
+        `,
+        {
+          user_id: userId,
+          session_id: session.id,
+          amount: session.amount_total / 100
+        },
+        { autoCommit: true }
+      );
+
+      // 📧 6️⃣ Build email HTML
+      let itemsHtml = "";
+
+      itemsResult.rows.forEach(item => {
+        itemsHtml += `
+          <tr>
+            <td>${item.TITLE}</td>
+            <td>${item.QUANTITY}</td>
+            <td>₹${item.TOTAL_AMOUNT}</td>
+          </tr>
+        `;
+      });
+
+      // 📩 7️⃣ Send email via Redis queue
+      if (userEmail) {
+        await emailQueue.add({
+          to: userEmail,
+          subject: "🧾 Order Receipt - Payment Successful",
+          html: `
+            <h2>Thank you for your purchase 🎉</h2>
+
+            <table border="1" cellpadding="10" cellspacing="0">
+              <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Price</th>
+              </tr>
+              ${itemsHtml}
+            </table>
+
+            <p><b>Total Paid:</b> ₹${session.amount_total / 100}</p>
+
+            <p>Your order is now being processed 🚚</p>
+          `
+        });
+      }
+
+      console.log("✅ Payment processed + email queued");
+
+    } catch (err) {
+      console.error("Webhook processing error:", err);
+    }
+  }
+
+  res.json({ received: true });
+});
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
@@ -303,10 +435,13 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
 
       // 🔍 Keyword filtering (if keyword exists)
       if (user.KEYWORD) {
-        const lowerTitle = title.toLowerCase();
-        const lowerKeyword = user.KEYWORD.toLowerCase();
-
-        if (!lowerTitle.includes(lowerKeyword)) {
+        const normalize = (text) =>
+        text.toLowerCase().replace(/\s+/g, "");
+        
+        const normalizedTitle = normalize(title);
+        const normalizedKeyword = normalize(user.KEYWORD);
+        
+        if (!normalizedTitle.includes(normalizedKeyword)) {
           continue;
         }
       }
@@ -527,6 +662,61 @@ app.get("/cart", authMiddleware, async (req, res) => {
   }
 });
 
+app.put("/cart", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+    const { item_id, quantity } = req.body;
+
+    if (quantity < 1) {
+      return res.status(400).json({ message: "Invalid quantity" });
+    }
+
+    await connection.execute(
+      `
+      UPDATE cart
+      SET quantity = :quantity
+      WHERE user_id = :user_id AND item_id = :item_id
+      `,
+      {
+        user_id: req.user.user_id,
+        item_id,
+        quantity
+      },
+      { autoCommit: true }
+    );
+
+    res.json({ message: "Cart updated" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.delete("/cart/:item_id", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+
+    await connection.execute(
+      `
+      DELETE FROM cart
+      WHERE user_id = :user_id AND item_id = :item_id
+      `,
+      {
+        user_id: req.user.user_id,
+        item_id: req.params.item_id
+      },
+      { autoCommit: true }
+    );
+
+    res.json({ message: "Item removed from cart" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 app.post("/items/:id/review", authMiddleware, async (req, res) => {
   try {
     const connection = getConnection();
@@ -674,6 +864,114 @@ app.put("/alerts/:id/read", authMiddleware, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+app.get("/orders", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+
+    const result = await connection.execute(
+      `
+      SELECT o.order_id,
+             o.status,
+             o.total_amount,
+             o.order_date,
+             i.title,
+             (SELECT image_url FROM item_images 
+              WHERE item_id = i.item_id FETCH FIRST 1 ROWS ONLY) AS image_url
+      FROM orders o
+      JOIN items i ON o.item_id = i.item_id
+      WHERE o.user_id = :user_id
+      ORDER BY o.order_date DESC
+      `,
+      { user_id: req.user.user_id },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/create-checkout-session", authMiddleware, async (req, res) => {
+  try {
+    const connection = getConnection();
+
+    // 1️⃣ Get cart items
+    const cartItems = await connection.execute(
+      `
+      SELECT c.item_id, c.quantity, i.title, i.price
+      FROM cart c
+      JOIN items i ON c.item_id = i.item_id
+      WHERE c.user_id = :user_id
+      `,
+      { user_id: req.user.user_id },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    if (cartItems.rows.length === 0) {
+      return res.status(400).json({ message: "Cart is empty" });
+    }
+
+    // 2️⃣ Create orders (PAYMENT_PENDING)
+    let totalAmount = 0;
+
+    for (const item of cartItems.rows) {
+      const amount = item.PRICE * item.QUANTITY;
+      totalAmount += amount;
+
+      await connection.execute(
+        `
+        INSERT INTO orders (user_id, item_id, quantity, total_amount)
+        VALUES (:user_id, :item_id, :quantity, :amount)
+        `,
+        {
+          user_id: req.user.user_id,
+          item_id: item.ITEM_ID,
+          quantity: item.QUANTITY,
+          amount
+        },
+        { autoCommit: true }
+      );
+    }
+
+    // 3️⃣ Stripe line items
+    const lineItems = cartItems.rows.map(item => ({
+      price_data: {
+        currency: "inr",
+        product_data: {
+          name: item.TITLE
+        },
+        unit_amount: item.PRICE * 100 // paise
+      },
+      quantity: item.QUANTITY
+    }));
+
+    // 4️⃣ Create session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: lineItems,
+      mode: "payment",
+      success_url: "http://localhost:3000/success",
+      cancel_url: "http://localhost:3000/cart",
+      metadata: {
+        user_id: req.user.user_id
+      }
+    });
+
+    res.json({ url: session.url });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Stripe error" });
+  }
+});
+
+
+
+
 
 async function startServer() {
   await connectDB();

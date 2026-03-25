@@ -34,7 +34,7 @@ const styles = {
     borderRadius: "15px",
     overflow: "hidden",
     boxShadow: "0 5px 15px rgba(0,0,0,0.2)",
-    cursor: "pointer", // 👈 makes it feel clickable
+    cursor: "pointer",
     transition: "transform 0.2s ease",
   },
   image: {

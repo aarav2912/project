@@ -11,6 +11,8 @@ import CategoryPage from "./pages/CategoryPage";
 import ProductPage from "./pages/ProductPage";
 import Cart from "./pages/Cart";
 import Interests from "./pages/Interests";
+import Orders from "./pages/Orders"
+import Success from "./pages/Success"
 import "./App.css";
 
 function App() {
@@ -47,6 +49,8 @@ function App() {
           <Route path="/cart" element={<Cart />} />
           <Route path="/interests" element={<ProtectedRoute><Interests /></ProtectedRoute>} />
           <Route path="/items/:id" element={<ProtectedRoute><ProductPage /></ProtectedRoute>} />
+          <Route path="/orders" element={<Orders />} />
+          <Route path="/success" element={<Success />} />
         </Routes>
       </Router>
     </div>
