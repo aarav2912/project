@@ -1,27 +1,26 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import { motion } from "framer-motion";
 
 function Cart() {
   const [cartItems, setCartItems] = useState([]);
   const token = localStorage.getItem("token");
 
-  // 🔄 Fetch Cart
-  const fetchCart = async () => {
+  const fetchCart = useCallback(async () => {
     try {
       const res = await axios.get("http://localhost:5000/cart", {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
-      setCartItems(res.data);
+      setCartItems(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchCart();
-  }, []);
+  }, [fetchCart]);
 
-  // 🔢 Update Quantity
   const updateQuantity = async (itemId, newQty) => {
     try {
       if (newQty < 1) {
@@ -41,13 +40,11 @@ function Cart() {
     }
   };
 
-  // 🗑 Remove Item
   const removeItem = async (itemId) => {
     try {
-      await axios.delete(
-        `http://localhost:5000/cart/${itemId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await axios.delete(`http://localhost:5000/cart/${itemId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       fetchCart();
     } catch (err) {
@@ -56,115 +53,104 @@ function Cart() {
   };
 
   const handleCheckout = async () => {
-  try {
-    const res = await axios.post(
-      "http://localhost:5000/create-checkout-session",
-      {},
-      {
-        headers: { Authorization: `Bearer ${token}` }
-      }
-    );
+    try {
+      const res = await axios.post(
+        "http://localhost:5000/create-checkout-session",
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
 
-    window.location.href = res.data.url;
-  } catch (err) {
-    console.log(err);
-  }
-};
+      window.location.href = res.data.url;
+    } catch (err) {
+      console.log(err);
+    }
+  };
 
-  // 💰 Total Price
   const totalPrice = cartItems.reduce(
-    (acc, item) => acc + item.PRICE * Number(item.QUANTITY),
+    (acc, item) => acc + Number(item.PRICE) * Number(item.QUANTITY),
     0
   );
 
   return (
-    <div style={{ padding: "40px" }}>
-      <h2>🛒 Your Cart</h2>
+    <div className="content-card" style={{ padding: "1.25rem" }}>
+      <motion.section
+        className="hero-panel"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <div className="hero-kicker">Checkout flow</div>
+        <h1 className="hero-title" style={{ fontSize: "2.3rem" }}>
+          Your cart
+        </h1>
+        <p className="hero-copy">
+          A cleaner cart with stronger contrast, smoother spacing, and controls that stay easy to read.
+        </p>
+      </motion.section>
 
-      {cartItems.length === 0 ? (
-        <p>Your cart is empty</p>
-      ) : (
-        <>
-          {cartItems.map(item => (
-            <div
-              key={item.ITEM_ID}
-              style={{
-                display: "flex",
-                gap: "20px",
-                marginBottom: "20px",
-                padding: "20px",
-                borderRadius: "12px",
-                background: "#f4f4f4",
-                alignItems: "center"
-              }}
-            >
-              <img
-                src={
-                  item.IMAGE_URL?.startsWith("http://localhost:5000")
-                    ? item.IMAGE_URL
-                    : `http://localhost:5000${item.IMAGE_URL}`
-                }
-                alt={item.TITLE}
-                style={{
-                  width: "100px",
-                  height: "100px",
-                  objectFit: "cover",
-                  borderRadius: "10px"
-                }}
-              />
+      <div style={{ marginTop: "1rem" }}>
+        {cartItems.length === 0 ? (
+          <div className="surface-panel empty-state">Your cart is empty.</div>
+        ) : (
+          cartItems.map((item) => {
+            const imageUrl = item.IMAGE_URL?.startsWith("http://localhost:5000")
+              ? item.IMAGE_URL
+              : `http://localhost:5000${item.IMAGE_URL}`;
 
-              <div style={{ flex: 1 }}>
-                <h4>{item.TITLE}</h4>
-                <p>₹ {item.PRICE}</p>
+            return (
+              <div key={item.ITEM_ID} className="cart-row surface-panel">
+                <img src={imageUrl} alt={item.TITLE} className="cart-row__image" />
 
-                {/* 🔢 Quantity Controls */}
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <button onClick={() => updateQuantity(item.ITEM_ID, Number(item.QUANTITY) - 1)}>
-                    ➖
-                  </button>
+                <div>
+                  <h3 className="panel-title" style={{ marginBottom: "0.25rem" }}>
+                    {item.TITLE}
+                  </h3>
+                  <p className="panel-copy" style={{ marginTop: 0 }}>
+                    Rs. {item.PRICE}
+                  </p>
 
-                  <span>{Number(item.QUANTITY)}</span>
-
-                  <button onClick={() => updateQuantity(item.ITEM_ID, Number(item.QUANTITY) + 1)}>
-                    ➕
-                  </button>
+                  <div className="button-row" style={{ alignItems: "center" }}>
+                    <button
+                      className="secondary-btn"
+                      type="button"
+                      onClick={() => updateQuantity(item.ITEM_ID, Number(item.QUANTITY) - 1)}
+                    >
+                      -
+                    </button>
+                    <span className="stat-pill__value" style={{ marginTop: 0 }}>
+                      {Number(item.QUANTITY)}
+                    </span>
+                    <button
+                      className="secondary-btn"
+                      type="button"
+                      onClick={() => updateQuantity(item.ITEM_ID, Number(item.QUANTITY) + 1)}
+                    >
+                      +
+                    </button>
+                    <button
+                      className="danger-btn"
+                      type="button"
+                      onClick={() => removeItem(item.ITEM_ID)}
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
-
-                {/* 🗑 Remove */}
-                <button
-                  onClick={() => removeItem(item.ITEM_ID)}
-                  style={{
-                    marginTop: "10px",
-                    background: "#ff4d4d",
-                    color: "white",
-                    border: "none",
-                    padding: "6px 12px",
-                    borderRadius: "8px",
-                    cursor: "pointer"
-                  }}
-                >
-                  🗑 Remove
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })
+        )}
+      </div>
 
-          <h3>Total: ₹ {totalPrice}</h3>
-
-          <button
-  onClick={handleCheckout}
-  style={{
-    padding: "12px 20px",
-    background: "#ff9900",
-    border: "none",
-    borderRadius: "10px",
-    cursor: "pointer",
-    fontWeight: "bold"
-  }}
->
-  Proceed to Checkout
-</button>
-        </>
+      {cartItems.length > 0 && (
+        <div className="surface-panel" style={{ padding: "1.25rem", marginTop: "1rem" }}>
+          <h3 className="panel-title">Total: Rs. {totalPrice}</h3>
+          <button className="primary-btn" type="button" onClick={handleCheckout}>
+            Proceed to checkout
+          </button>
+        </div>
       )}
     </div>
   );

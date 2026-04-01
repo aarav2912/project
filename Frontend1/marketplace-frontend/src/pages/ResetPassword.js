@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { motion } from "framer-motion";
 
 function ResetPassword() {
   const [newPassword, setNewPassword] = useState("");
@@ -16,7 +17,7 @@ function ResetPassword() {
         newPassword,
       });
 
-      alert("Password reset successful 🎉");
+      alert("Password reset successful");
       navigate("/");
     } catch (err) {
       alert("Invalid or expired token");
@@ -24,16 +25,33 @@ function ResetPassword() {
   };
 
   return (
-    <div className="container">
-      <div className="card">
-        <h2>Set New Password 🔑</h2>
-        <input
-          type="password"
-          placeholder="Enter new password"
-          onChange={(e) => setNewPassword(e.target.value)}
-        />
-        <button onClick={handleReset}>Reset Password</button>
-      </div>
+    <div className="auth-page">
+      <motion.div
+        className="auth-card"
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+      >
+        <div className="hero-kicker">Secure reset</div>
+        <h1 className="auth-title" style={{ marginTop: "0.85rem", fontSize: "2rem" }}>
+          Set a new password
+        </h1>
+        <p className="auth-copy">
+          Pick a fresh password and get back into your account.
+        </p>
+
+        <div className="field-stack">
+          <input
+            className="input"
+            type="password"
+            placeholder="Enter new password"
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+          <button className="primary-btn" type="button" onClick={handleReset}>
+            Reset password
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 }

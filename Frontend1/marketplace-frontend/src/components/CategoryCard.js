@@ -16,54 +16,32 @@ const categoryImages = {
   Book: booksImg,
   Electronics: electronicsImg,
   Furniture: furnitureImg,
-  SportsItems: sportsImg
+  SportsItems: sportsImg,
 };
 
 function CategoryCard({ category, onClick }) {
+  const image = categoryImages[category.CATEGORY_NAME] || electronicsImg;
+
   return (
-    <motion.div
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.97 }}
+    <motion.button
+      type="button"
+      className="category-card"
       onClick={onClick}
-      style={styles.card}
+      whileHover={{ y: -6, rotateX: 5 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ duration: 0.2 }}
     >
       <img
-        src={categoryImages[category.CATEGORY_NAME]}
+        src={image}
         alt={category.CATEGORY_NAME}
-        style={styles.image}
+        className="category-card__image"
       />
 
-      <div style={styles.overlay}>
+      <div className="category-card__overlay">
         <h3>{category.CATEGORY_NAME}</h3>
       </div>
-    </motion.div>
+    </motion.button>
   );
 }
-
-const styles = {
-  card: {
-    position: "relative",
-    width: "260px",
-    height: "180px",
-    borderRadius: "20px",
-    overflow: "hidden",
-    cursor: "pointer",
-    boxShadow: "0 8px 25px rgba(0,0,0,0.2)",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-  },
-  overlay: {
-    position: "absolute",
-    bottom: "0",
-    width: "100%",
-    background: "rgba(0,0,0,0.6)",
-    color: "white",
-    padding: "10px",
-    textAlign: "center",
-  },
-};
 
 export default CategoryCard;

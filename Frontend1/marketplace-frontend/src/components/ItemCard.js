@@ -1,50 +1,30 @@
 import React from "react";
+import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 
 function ItemCard({ item }) {
   const navigate = useNavigate();
+  const imageUrl = item.IMAGE_URL?.startsWith("http://localhost:5000")
+    ? item.IMAGE_URL
+    : `http://localhost:5000${item.IMAGE_URL}`;
 
   return (
-    <div
-      style={styles.card}
+    <motion.button
+      type="button"
+      className="item-card"
       onClick={() => navigate(`/product/${item.ITEM_ID}`)}
+      whileHover={{ y: -6 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ duration: 0.2 }}
     >
-      <img
-        src={
-          item.IMAGE_URL?.startsWith("http://localhost:5000")
-            ? item.IMAGE_URL
-            : `http://localhost:5000${item.IMAGE_URL}`
-        }
-        alt={item.TITLE}
-        style={styles.image}
-      />
+      <img src={imageUrl} alt={item.TITLE} className="item-card__image" />
 
-      <div style={styles.content}>
-        <h4>{item.TITLE}</h4>
-        <p>₹ {item.PRICE}</p>
+      <div className="item-card__body">
+        <h4 className="item-card__title">{item.TITLE}</h4>
+        <p className="item-card__price">Rs. {item.PRICE}</p>
       </div>
-    </div>
+    </motion.button>
   );
 }
-
-const styles = {
-  card: {
-    width: "250px",
-    background: "white",
-    borderRadius: "15px",
-    overflow: "hidden",
-    boxShadow: "0 5px 15px rgba(0,0,0,0.2)",
-    cursor: "pointer",
-    transition: "transform 0.2s ease",
-  },
-  image: {
-    width: "100%",
-    height: "180px",
-    objectFit: "cover",
-  },
-  content: {
-    padding: "15px",
-  },
-};
 
 export default ItemCard;

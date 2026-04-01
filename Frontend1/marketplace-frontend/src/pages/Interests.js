@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { motion } from "framer-motion";
 
 function Interests() {
   const [categories, setCategories] = useState([]);
@@ -7,61 +8,83 @@ function Interests() {
     category_id: "",
     min_price: "",
     max_price: "",
-    keyword: ""
+    keyword: "",
   });
 
   const token = localStorage.getItem("token");
 
   useEffect(() => {
-    axios.get("http://localhost:5000/categories", {
-      headers: { Authorization: `Bearer ${token}` }
-    }).then(res => setCategories(res.data));
-  }, []);
+    axios
+      .get("http://localhost:5000/categories", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => setCategories(Array.isArray(res.data) ? res.data : []));
+  }, [token]);
 
   const handleSubmit = async () => {
-    await axios.post(
-      "http://localhost:5000/interests",
-      form,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    await axios.post("http://localhost:5000/interests", form, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     alert("Interest saved!");
   };
 
   return (
-    <div className="container">
-      <div className="card" style={{ width: "400px" }}>
-        <h2>🎯 Set Your Interest</h2>
+    <div className="content-card" style={{ padding: "1.25rem" }}>
+      <motion.section
+        className="hero-panel"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <div className="hero-kicker">Personal feed</div>
+        <h1 className="hero-title" style={{ fontSize: "2.4rem" }}>
+          Set your interests
+        </h1>
+        <p className="hero-copy">
+          Save what you care about and let the app surface better matches without cluttering the UI.
+        </p>
+      </motion.section>
 
-        <select
-          value={form.category_id}
-          onChange={e => setForm({ ...form, category_id: e.target.value })}
-        >
-          <option value="">Select Category</option>
-          {categories.map(cat => (
-            <option key={cat.CATEGORY_ID} value={cat.CATEGORY_ID}>
-              {cat.CATEGORY_NAME}
-            </option>
-          ))}
-        </select>
+      <div className="surface-panel" style={{ padding: "1.25rem", marginTop: "1rem" }}>
+        <div className="field-stack">
+          <select
+            className="select"
+            value={form.category_id}
+            onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+          >
+            <option value="">Select category</option>
+            {categories.map((cat) => (
+              <option key={cat.CATEGORY_ID} value={cat.CATEGORY_ID}>
+                {cat.CATEGORY_NAME}
+              </option>
+            ))}
+          </select>
 
-        <input
-          type="number"
-          placeholder="Min Price"
-          onChange={e => setForm({ ...form, min_price: e.target.value })}
-        />
+          <div className="mobile-stack">
+            <input
+              className="input"
+              type="number"
+              placeholder="Min price"
+              onChange={(e) => setForm({ ...form, min_price: e.target.value })}
+            />
+            <input
+              className="input"
+              type="number"
+              placeholder="Max price"
+              onChange={(e) => setForm({ ...form, max_price: e.target.value })}
+            />
+          </div>
 
-        <input
-          type="number"
-          placeholder="Max Price"
-          onChange={e => setForm({ ...form, max_price: e.target.value })}
-        />
+          <input
+            className="input"
+            placeholder="Keyword (optional)"
+            onChange={(e) => setForm({ ...form, keyword: e.target.value })}
+          />
 
-        <input
-          placeholder="Keyword (optional)"
-          onChange={e => setForm({ ...form, keyword: e.target.value })}
-        />
-
-        <button onClick={handleSubmit}>Save Interest</button>
+          <button className="primary-btn" type="button" onClick={handleSubmit}>
+            Save interest
+          </button>
+        </div>
       </div>
     </div>
   );

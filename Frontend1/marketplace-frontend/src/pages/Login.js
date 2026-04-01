@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
+import { motion } from "framer-motion";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -22,27 +23,48 @@ function Login() {
   };
 
   return (
-    <div className="container">
-      <div className="card">
-        <h2>Welcome Back 👋</h2>
-        <input
-          type="email"
-          placeholder="Email"
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <p style={{ cursor: "pointer", fontSize: "14px" }}>
-          <Link to="/forgot-password">Forgot Password?</Link>
+    <div className="auth-page">
+      <motion.div
+        className="auth-card"
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+      >
+        <div className="hero-kicker">Marketplace reimagined</div>
+        <h1 className="auth-title" style={{ marginTop: "0.85rem", fontSize: "2rem" }}>
+          Welcome back
+        </h1>
+        <p className="auth-copy">
+          Log in to explore categories, track orders, and sell in a UI that stays readable in every theme.
         </p>
-        <button onClick={handleLogin}>Login</button>
-        <p>
-          Don’t have an account? <Link to="/register">Register</Link>
+
+        <div className="field-stack">
+          <input
+            className="input"
+            type="email"
+            placeholder="Email"
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <input
+            className="input"
+            type="password"
+            placeholder="Password"
+            onChange={(e) => setPassword(e.target.value)}
+          />
+
+          <Link to="/forgot-password" className="muted" style={{ fontSize: "0.92rem" }}>
+            Forgot password?
+          </Link>
+
+          <button className="primary-btn" type="button" onClick={handleLogin}>
+            Login
+          </button>
+        </div>
+
+        <p className="auth-copy" style={{ marginBottom: 0 }}>
+          Don&apos;t have an account? <Link to="/register">Register</Link>
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }

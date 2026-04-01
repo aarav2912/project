@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useParams } from "react-router-dom";
+import { motion } from "framer-motion";
 import ItemCard from "../components/ItemCard";
 
 function CategoryPage() {
@@ -13,17 +14,28 @@ function CategoryPage() {
       .get(`http://localhost:5000/categories/${id}/items`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      .then((res) => setItems(res.data))
+      .then((res) => setItems(Array.isArray(res.data) ? res.data : []))
       .catch((err) => console.log(err));
-  }, [id]);
+  }, [id, token]);
 
   return (
-    <div style={styles.container}>
-      <h2 style={{ color: "white", marginBottom: "20px" }}>
-        Items in this Category
-      </h2>
+    <div className="content-card" style={{ padding: "1.25rem" }}>
+      <motion.section
+        className="hero-panel"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <div className="hero-kicker">Category browse</div>
+        <h1 className="hero-title" style={{ fontSize: "2.3rem" }}>
+          Explore items in this category
+        </h1>
+        <p className="hero-copy">
+          Consistent spacing, stronger contrast, and a cleaner layout make the browsing experience feel premium.
+        </p>
+      </motion.section>
 
-      <div style={styles.grid}>
+      <div className="item-grid" style={{ marginTop: "1rem" }}>
         {items.map((item) => (
           <ItemCard key={item.ITEM_ID} item={item} />
         ))}
@@ -31,18 +43,5 @@ function CategoryPage() {
     </div>
   );
 }
-
-const styles = {
-  container: {
-    minHeight: "100vh",
-    padding: "40px",
-    background: "linear-gradient(135deg, #0f2027, #203a43, #2c5364)",
-  },
-  grid: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "25px",
-  },
-};
 
 export default CategoryPage;

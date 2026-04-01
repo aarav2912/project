@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
+import { motion } from "framer-motion";
 import CategoryCard from "../components/CategoryCard";
-import AlertBell from "../components/AlertBell";
 
 function Dashboard() {
   const [categories, setCategories] = useState([]);
@@ -20,7 +20,7 @@ function Dashboard() {
     if (token) {
       try {
         const decoded = jwtDecode(token);
-        setUsername(decoded.username);
+        setUsername(decoded.username || "");
       } catch (err) {
         console.error("Invalid token");
       }
@@ -30,55 +30,74 @@ function Dashboard() {
       .get("http://localhost:5000/categories", {
         headers: { Authorization: `Bearer ${token}` },
       })
-      .then((res) => setCategories(res.data))
+      .then((res) => setCategories(Array.isArray(res.data) ? res.data : []))
       .catch((err) => console.log(err));
-  }, []);
+  }, [token]);
+
+  const displayName = username
+    ? username.charAt(0).toUpperCase() + username.slice(1)
+    : "there";
 
   return (
-    <div style={styles.container}>
-      <h1 style={{ color: "white", marginBottom: "30px" }}>
-        🎉 Welcome{" "}
-        {username.substring(0, 1).toUpperCase() +
-          username.substring(1, username.length)}
-      </h1>
+    <div className="content-card" style={{ padding: "1.25rem" }}>
+      <motion.section
+        className="hero-panel"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <div className="hero-kicker">Curated marketplace</div>
+        <h1 className="hero-title">Welcome back, {displayName}</h1>
+        <p className="hero-copy">
+          Browse fast, sell faster, and keep the interface clean enough that the products stay in focus.
+        </p>
 
-      <div style={{ marginBottom: "30px", display: "flex", gap: "15px" }}>
-        <button onClick={() => navigate("/sell")} style={styles.sellBtn}>
-          ➕ Sell an Item
-        </button>
+        <div className="hero-stats">
+          <div className="stat-pill">
+            <div className="stat-pill__label">Quick action</div>
+            <div className="stat-pill__value">List a new item</div>
+          </div>
+          <div className="stat-pill">
+            <div className="stat-pill__label">Tracking</div>
+            <div className="stat-pill__value">Orders and alerts</div>
+          </div>
+          <div className="stat-pill">
+            <div className="stat-pill__label">Personalized</div>
+            <div className="stat-pill__value">Interest-driven feed</div>
+          </div>
+        </div>
 
-        <button onClick={() => navigate("/cart")} style={styles.CartBtn}>
-          🛒 Cart
-        </button>
+        <div className="hero-actions" style={{ marginTop: "1.1rem" }}>
+          <button className="primary-btn" onClick={() => navigate("/sell")} type="button">
+            Sell an item
+          </button>
+          <button className="secondary-btn" onClick={() => navigate("/cart")} type="button">
+            Cart
+          </button>
+          <button className="secondary-btn" onClick={() => navigate("/orders")} type="button">
+            My orders
+          </button>
+          <button className="secondary-btn" onClick={() => navigate("/interests")} type="button">
+            Set interests
+          </button>
+          <button className="ghost-btn" onClick={handleLogout} type="button">
+            Logout
+          </button>
+        </div>
+      </motion.section>
 
-        <button
-          onClick={() => navigate("/orders")}
-          style={styles.ordersBtn}
-        >
-          📦 My Orders
-        </button>
-
-        <button
-          onClick={() => navigate("/interests")}
-          style={styles.interestBtn}
-        >
-          🎯 Set Interests
-        </button>
-
-        <button onClick={handleLogout} style={styles.logoutBtn}>
-          Logout
-        </button>
+      <div className="toolbar-row" style={{ marginBottom: "1rem" }}>
+        <div>
+          <h2 className="section-title" style={{ marginBottom: 0 }}>
+            Explore categories
+          </h2>
+          <p className="section-subtitle">
+            Tap a category to jump into a polished browsing flow with the same theme-safe surface.
+          </p>
+        </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <AlertBell />
-      </div>
-
-      <h2 style={{ color: "white", marginBottom: "20px" }}>
-        Explore Categories 🚀
-      </h2>
-
-      <div style={styles.grid}>
+      <div className="category-grid">
         {categories.map((cat) => (
           <CategoryCard
             key={cat.CATEGORY_ID}
@@ -90,54 +109,5 @@ function Dashboard() {
     </div>
   );
 }
-
-const styles = {
-  container: {
-    minHeight: "100vh",
-    padding: "40px",
-    background: "linear-gradient(135deg, #667eea, #764ba2)",
-  },
-  grid: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "30px",
-    justifyContent: "center",
-  },
-  sellBtn: {
-    background: "#4CAF50",
-    padding: "10px 20px",
-    borderRadius: "8px",
-    border: "none",
-    cursor: "pointer",
-  },
-  CartBtn: {
-    background: "#cdba28",
-    padding: "10px 20px",
-    borderRadius: "8px",
-    border: "none",
-    cursor: "pointer",
-  },
-  ordersBtn: {
-    background: "#9C27B0",
-    padding: "10px 20px",
-    borderRadius: "8px",
-    border: "none",
-    cursor: "pointer",
-  },
-  interestBtn: {
-    background: "#2196F3",
-    padding: "10px 20px",
-    borderRadius: "8px",
-    border: "none",
-    cursor: "pointer",
-  },
-  logoutBtn: {
-    background: "#ff4d4d",
-    padding: "10px 20px",
-    borderRadius: "8px",
-    border: "none",
-    cursor: "pointer",
-  },
-};
 
 export default Dashboard;
