@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { jwtDecode } from "jwt-decode";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -16,7 +17,13 @@ function Login() {
       });
 
       localStorage.setItem("token", res.data.token);
-      navigate("/dashboard");
+      try {
+        const decoded = jwtDecode(res.data.token);
+        const role = String(decoded.role || "").toUpperCase();
+        navigate(role === "ADMIN" ? "/admin/grievances" : "/dashboard");
+      } catch (decodeErr) {
+        navigate("/dashboard");
+      }
     } catch (err) {
       alert("Invalid credentials");
     }

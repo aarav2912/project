@@ -14,7 +14,7 @@ function Navbar({ authenticated = true }) {
     let mounted = true;
 
     axios
-      .get("http://localhost:5000/categories/tree")
+      .get("http://localhost:5000/categories")
       .then((res) => {
         if (mounted) {
           setCategories(Array.isArray(res.data) ? res.data : []);
@@ -53,6 +53,8 @@ function Navbar({ authenticated = true }) {
     navigate("/");
   };
 
+  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+
   const openCategory = (categoryId) => {
     setShowMenu(false);
     navigate(`/category/${categoryId}`);
@@ -64,82 +66,101 @@ function Navbar({ authenticated = true }) {
         <button
           className="brand"
           type="button"
-          onClick={() => navigate(authenticated ? "/dashboard" : "/")}
+          onClick={() => navigate(authenticated ? (isAdmin ? "/admin/grievances" : "/dashboard") : "/")}
         >
           <span className="brand__mark" aria-hidden="true" />
           <span>MyMarket</span>
         </button>
 
         <div className="shell-nav__actions">
-          <div className="nav-menu">
-            <button
-              className="nav-chip"
-              type="button"
-              onClick={() => setShowMenu((value) => !value)}
-            >
-              Categories
-            </button>
-
-            {showMenu && (
-              <div className="nav-dropdown">
-                {categories.length === 0 ? (
-                  <div className="nav-dropdown__section">
-                    <p className="nav-dropdown__title">Categories</p>
-                    <p className="muted" style={{ margin: 0 }}>
-                      No category data is available yet.
-                    </p>
-                  </div>
-                ) : (
-                  categories.map((cat) => (
-                    <div key={cat.CATEGORY_ID} className="nav-dropdown__section">
-                      <p className="nav-dropdown__title">{cat.CATEGORY_NAME}</p>
-                      {(cat.children || []).map((child) => (
-                        <button
-                          key={child.CATEGORY_ID}
-                          className="nav-dropdown__item"
-                          type="button"
-                          onClick={() => openCategory(child.CATEGORY_ID)}
-                        >
-                          {child.CATEGORY_NAME}
-                        </button>
-                      ))}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
           {authenticated ? (
-            <>
-              <button className="nav-chip" type="button" onClick={() => navigate("/sell")}>
-                Sell Item
-              </button>
+            isAdmin ? (
+              <>
+                <button className="nav-chip is-active" type="button" onClick={() => navigate("/admin/grievances")}>
+                  Admin Inbox
+                </button>
 
-              <button className="nav-chip" type="button" onClick={() => navigate("/cart")}>
-                Cart
-              </button>
+                <button className="nav-chip" type="button" onClick={logout}>
+                  Logout
+                </button>
+                {user && (
+                  <div className="nav-chip" style={{ cursor: "default" }}>
+                    {user.username}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="nav-menu">
+                  <button
+                    className="nav-chip"
+                    type="button"
+                    onClick={() => setShowMenu((value) => !value)}
+                  >
+                    Categories
+                  </button>
 
-              <button className="nav-chip" type="button" onClick={() => navigate("/orders")}>
-                Orders
-              </button>
-
-              <button className="nav-chip" type="button" onClick={() => navigate("/interests")}>
-                Interests
-              </button>
-
-              <AlertBell />
-
-              {user && (
-                <div className="nav-chip" style={{ cursor: "default" }}>
-                  {user.USERNAME}
+                  {showMenu && (
+                    <div className="nav-dropdown" style={{ minWidth: "260px", maxHeight: "420px", overflowY: "auto" }}>
+                      {categories.length === 0 ? (
+                        <div className="nav-dropdown__section">
+                          <p className="nav-dropdown__title">Categories</p>
+                          <p className="muted" style={{ margin: 0 }}>
+                            No category data is available yet.
+                          </p>
+                        </div>
+                      ) : (
+                        categories.map((cat) => (
+                          <button
+                            key={cat.CATEGORY_ID}
+                            className="nav-dropdown__item nav-dropdown__section"
+                            type="button"
+                            onClick={() => openCategory(cat.CATEGORY_ID)}
+                            style={{ width: "100%", textAlign: "left", marginBottom: "0.5rem" }}
+                          >
+                            <p className="nav-dropdown__title" style={{ marginBottom: 0 }}>
+                              {cat.CATEGORY_NAME}
+                            </p>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
 
-              <button className="nav-chip" type="button" onClick={logout}>
-                Logout
-              </button>
-            </>
+                <button className="nav-chip" type="button" onClick={() => navigate("/sell")}>
+                  Sell Item
+                </button>
+
+                <button className="nav-chip" type="button" onClick={() => navigate("/cart")}>
+                  Cart
+                </button>
+
+                <button className="nav-chip" type="button" onClick={() => navigate("/orders")}>
+                  Orders
+                </button>
+
+                <button className="nav-chip" type="button" onClick={() => navigate("/interests")}>
+                  Interests
+                </button>
+
+                <button className="nav-chip" type="button" onClick={() => navigate("/grievances")}>
+                  Grievances
+                </button>
+
+                <AlertBell />
+
+                {user && (
+                  <div className="nav-chip" style={{ cursor: "default" }}>
+                    {user.username}
+                  </div>
+                )}
+
+                <button className="nav-chip" type="button" onClick={logout}>
+                  Logout
+                </button>
+              </>
+            )
           ) : (
             <>
               <button className="nav-chip" type="button" onClick={() => navigate("/")}>

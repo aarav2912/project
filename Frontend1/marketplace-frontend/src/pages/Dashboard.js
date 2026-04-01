@@ -20,6 +20,10 @@ function Dashboard() {
     if (token) {
       try {
         const decoded = jwtDecode(token);
+        if (String(decoded.role || "").toUpperCase() === "ADMIN") {
+          navigate("/admin/grievances", { replace: true });
+          return;
+        }
         setUsername(decoded.username || "");
       } catch (err) {
         console.error("Invalid token");
@@ -32,7 +36,18 @@ function Dashboard() {
       })
       .then((res) => setCategories(Array.isArray(res.data) ? res.data : []))
       .catch((err) => console.log(err));
-  }, [token]);
+  }, [token, navigate]);
+
+  if (token && username === "" && window.location.pathname === "/dashboard") {
+    try {
+      const decoded = jwtDecode(token);
+      if (String(decoded.role || "").toUpperCase() === "ADMIN") {
+        return null;
+      }
+    } catch (err) {
+      // ignore and fall through
+    }
+  }
 
   const displayName = username
     ? username.charAt(0).toUpperCase() + username.slice(1)

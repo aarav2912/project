@@ -14,6 +14,8 @@ import Cart from "./pages/Cart";
 import Interests from "./pages/Interests";
 import Orders from "./pages/Orders";
 import Success from "./pages/Success";
+import Grievances from "./pages/Grievances";
+import AdminGrievances from "./pages/AdminGrievances";
 import "./App.css";
 
 const THEME_KEY = "marketplace-theme";
@@ -69,8 +71,19 @@ function App() {
           <Route path="/product/:id" element={withPublicLayout(<ProductPage />)} />
           <Route path="/cart" element={withProtectedLayout(<Cart />)} />
           <Route path="/interests" element={withProtectedLayout(<Interests />)} />
+          <Route path="/grievances" element={withProtectedLayout(<Grievances />)} />
           <Route path="/items/:id" element={withProtectedLayout(<ProductPage />)} />
           <Route path="/orders" element={withProtectedLayout(<Orders />)} />
+          <Route
+            path="/admin/grievances"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <AppLayout authenticated>
+                  <AdminGrievances />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
           <Route path="/success" element={withPublicLayout(<Success />)} />
         </Routes>
       </Router>

@@ -424,6 +424,51 @@ button {
   font-weight: 800;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.status-pill.is-open {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+}
+
+.status-pill.is-resolved {
+  background: rgba(52, 211, 153, 0.14);
+  color: var(--success);
+}
+
+.support-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.support-card {
+  padding: 1rem;
+}
+
+.support-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 0.7rem;
+}
+
+.support-card__reply {
+  margin-top: 0.85rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+
 .grid,
 .card-grid,
 .category-grid,
