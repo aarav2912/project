@@ -40,7 +40,6 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
     const connection = getConnection();
 
     try {
-      // 🧾 1️⃣ Get user email
       const userResult = await connection.execute(
         `SELECT email FROM users WHERE user_id = :user_id`,
         { user_id: userId },
@@ -48,8 +47,6 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
       );
 
       const userEmail = userResult.rows[0]?.EMAIL;
-
-      // 📦 2️⃣ Get order items BEFORE updating anything
       const itemsResult = await connection.execute(
         `
         SELECT i.title, o.quantity, o.total_amount
@@ -62,7 +59,6 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
         { outFormat: oracledb.OUT_FORMAT_OBJECT }
       );
 
-      // 🔄 3️⃣ Update orders → ORDERED
       await connection.execute(
         `
         UPDATE orders
@@ -74,7 +70,6 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
         { autoCommit: true }
       );
 
-      // 🧹 4️⃣ Clear cart
       await connection.execute(
         `
         DELETE FROM cart
@@ -84,7 +79,6 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
         { autoCommit: true }
       );
 
-      // 💳 5️⃣ Insert payment (latest order reference)
       await connection.execute(
         `
         INSERT INTO payments (order_id, stripe_session_id, amount, payment_status)
@@ -103,7 +97,6 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
         { autoCommit: true }
       );
 
-      // 📧 6️⃣ Build email HTML
       let itemsHtml = "";
 
       itemsResult.rows.forEach(item => {
@@ -115,8 +108,6 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
           </tr>
         `;
       });
-
-      // 📩 7️⃣ Send email via Redis queue
       if (userEmail) {
         await emailQueue.add({
           to: userEmail,
@@ -140,7 +131,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
         });
       }
 
-      console.log("✅ Payment processed + email queued");
+      console.log("Payment processed + email queued");
 
     } catch (err) {
       console.error("Webhook processing error:", err);
@@ -269,7 +260,6 @@ app.post("/forgot-password", async (req, res) => {
 
 const rawToken = crypto.randomBytes(32).toString("hex");
 
-// Step 2: hash it for DB storage
 const resetToken = crypto.createHash("sha256")
   .update(rawToken)
   .digest("hex");
@@ -288,7 +278,6 @@ const resetToken = crypto.createHash("sha256")
       { autoCommit: true }
     );
 
-    // Configure mail (Gmail example)
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -352,7 +341,6 @@ app.post("/reset-password", async (req, res) => {
       { autoCommit: true }
     );
 
-    // Delete token after use
     await connection.execute(
       `DELETE FROM password_resets WHERE reset_token = :token`,
       { token : hashedToken},
@@ -381,7 +369,6 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // 🔹 Insert item
     const result = await connection.execute(
       `INSERT INTO items 
        (seller_user_id, category_id, title, description, price, quantity)
@@ -401,7 +388,6 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
 
     const itemId = result.outBinds.item_id[0];
 
-    // 🔹 Insert images
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const imageUrl = `/uploads/${file.filename}`;
@@ -415,7 +401,6 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
       }
     }
 
-    // 🔎 Find interested users (category + price range)
     const interestedUsers = await connection.execute(
       `
       SELECT ui.user_id, u.email, ui.keyword
@@ -433,7 +418,6 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
 
     for (const user of interestedUsers.rows) {
 
-      // 🔍 Keyword filtering (if keyword exists)
       if (user.KEYWORD) {
         const normalize = (text) =>
         text.toLowerCase().replace(/\s+/g, "");
@@ -446,7 +430,6 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
         }
       }
 
-      // 🔔 Insert alert
       await connection.execute(
         `
         INSERT INTO alerts (user_id, category_id, item_id, is_read)
@@ -460,7 +443,6 @@ app.post("/items", authMiddleware, upload.array("images", 5), async (req, res) =
         { autoCommit: true }
       );
 
-      // 📧 Send email asynchronously via Redis queue
       await emailQueue.add({
         to: user.EMAIL,
         subject: "New Item Matching Your Interest 🎯",
@@ -537,7 +519,6 @@ app.get("/items/:id", authMiddleware, async (req, res) => {
     const connection = getConnection();
     const itemId = parseInt(req.params.id);
 
-    // 1️⃣ Get item details
     const itemResult = await connection.execute(
       `
       SELECT i.item_id,
@@ -561,7 +542,6 @@ app.get("/items/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Item not found" });
     }
 
-    // 2️⃣ Get all images
     const imagesResult = await connection.execute(
       `
       SELECT image_url
@@ -572,7 +552,6 @@ app.get("/items/:id", authMiddleware, async (req, res) => {
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
 
-    // 3️⃣ Get reviews
     const reviewsResult = await connection.execute(
       `
       SELECT r.rating,
@@ -723,7 +702,6 @@ app.post("/items/:id/review", authMiddleware, async (req, res) => {
     const itemId = parseInt(req.params.id);
     const { rating, review_text } = req.body;
 
-    // 1️⃣ Insert review
     await connection.execute(
       `
       INSERT INTO reviews (user_id, item_id, rating, review_text)
@@ -738,7 +716,6 @@ app.post("/items/:id/review", authMiddleware, async (req, res) => {
       { autoCommit: true }
     );
 
-    // 2️⃣ Recalculate avg rating
     const ratingResult = await connection.execute(
       `
       SELECT ROUND(AVG(rating),1) AS avg_rating,
@@ -752,7 +729,6 @@ app.post("/items/:id/review", authMiddleware, async (req, res) => {
 
     const { AVG_RATING, REVIEW_COUNT } = ratingResult.rows[0];
 
-    // 3️⃣ Update item table
     await connection.execute(
       `
       UPDATE items
@@ -899,7 +875,6 @@ app.post("/create-checkout-session", authMiddleware, async (req, res) => {
   try {
     const connection = getConnection();
 
-    // 1️⃣ Get cart items
     const cartItems = await connection.execute(
       `
       SELECT c.item_id, c.quantity, i.title, i.price
@@ -915,7 +890,6 @@ app.post("/create-checkout-session", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Cart is empty" });
     }
 
-    // 2️⃣ Create orders (PAYMENT_PENDING)
     let totalAmount = 0;
 
     for (const item of cartItems.rows) {
@@ -937,7 +911,6 @@ app.post("/create-checkout-session", authMiddleware, async (req, res) => {
       );
     }
 
-    // 3️⃣ Stripe line items
     const lineItems = cartItems.rows.map(item => ({
       price_data: {
         currency: "inr",
@@ -949,7 +922,6 @@ app.post("/create-checkout-session", authMiddleware, async (req, res) => {
       quantity: item.QUANTITY
     }));
 
-    // 4️⃣ Create session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: lineItems,
