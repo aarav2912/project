@@ -164,43 +164,149 @@ const queueEmail = (to, subject, html) => emailQueue.add({ to, subject, html });
 async function ensureGrievanceSchema() {
   const connection = getConnection();
 
-  const columnsResult = await connection.execute(
-    `
-    SELECT column_name
-    FROM user_tab_columns
-    WHERE table_name = 'GRIEVANCES'
-    `,
-    {},
-    { outFormat: oracledb.OUT_FORMAT_OBJECT }
-  );
+  await connection.execute(`
+    BEGIN
+      EXECUTE IMMEDIATE 'ALTER TABLE grievances ADD (admin_reply CLOB)';
+    EXCEPTION
+      WHEN OTHERS THEN
+        IF SQLCODE != -1430 THEN
+          RAISE;
+        END IF;
+    END;
+  `);
 
-  const existingColumns = new Set(
-    columnsResult.rows.map((row) => String(row.COLUMN_NAME || row.column_name).toUpperCase())
-  );
+  await connection.execute(`
+    BEGIN
+      EXECUTE IMMEDIATE 'ALTER TABLE grievances ADD (replied_at DATE)';
+    EXCEPTION
+      WHEN OTHERS THEN
+        IF SQLCODE != -1430 THEN
+          RAISE;
+        END IF;
+    END;
+  `);
 
-  if (!existingColumns.has("ADMIN_REPLY")) {
-    await connection.execute(
-      `ALTER TABLE grievances ADD (admin_reply CLOB)`,
-      {},
-      { autoCommit: true }
-    );
-  }
+  await connection.execute(`
+    BEGIN
+      EXECUTE IMMEDIATE 'ALTER TABLE grievances ADD (replied_by NUMBER)';
+    EXCEPTION
+      WHEN OTHERS THEN
+        IF SQLCODE != -1430 THEN
+          RAISE;
+        END IF;
+    END;
+  `);
+}
 
-  if (!existingColumns.has("REPLIED_AT")) {
-    await connection.execute(
-      `ALTER TABLE grievances ADD (replied_at DATE)`,
-      {},
-      { autoCommit: true }
-    );
-  }
+async function ensureNormalizedRolesSchema() {
+  const connection = getConnection();
 
-  if (!existingColumns.has("REPLIED_BY")) {
-    await connection.execute(
-      `ALTER TABLE grievances ADD (replied_by NUMBER)`,
-      {},
-      { autoCommit: true }
-    );
-  }
+  await connection.execute(`
+    BEGIN
+      EXECUTE IMMEDIATE '
+        CREATE TABLE roles (
+          role_name VARCHAR2(20) PRIMARY KEY
+        )
+      ';
+    EXCEPTION
+      WHEN OTHERS THEN
+        IF SQLCODE != -955 THEN
+          RAISE;
+        END IF;
+    END;
+  `);
+
+  await connection.execute(`
+    BEGIN
+      INSERT INTO roles (role_name)
+      SELECT 'USER' FROM dual
+      WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'USER');
+
+      INSERT INTO roles (role_name)
+      SELECT 'ADMIN' FROM dual
+      WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'ADMIN');
+
+      UPDATE users
+      SET role = UPPER(role)
+      WHERE role IS NOT NULL;
+
+      UPDATE users
+      SET role = 'USER'
+      WHERE role IS NULL;
+
+      COMMIT;
+    END;
+  `);
+
+  await connection.execute(`
+    BEGIN
+      EXECUTE IMMEDIATE '
+        ALTER TABLE users
+        ADD CONSTRAINT fk_users_role
+        FOREIGN KEY (role)
+        REFERENCES roles(role_name)
+      ';
+    EXCEPTION
+      WHEN OTHERS THEN
+        IF SQLCODE != -2275 THEN
+          RAISE;
+        END IF;
+    END;
+  `);
+}
+
+async function ensureDatabaseProgramUnits() {
+  const connection = getConnection();
+
+  await connection.execute(`
+    CREATE OR REPLACE FUNCTION fn_item_avg_rating(p_item_id IN NUMBER)
+    RETURN NUMBER
+    IS
+      v_avg NUMBER(2,1);
+    BEGIN
+      SELECT ROUND(NVL(AVG(rating), 0), 1)
+      INTO v_avg
+      FROM reviews
+      WHERE item_id = p_item_id;
+
+      RETURN v_avg;
+    EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+        RETURN 0;
+    END;
+  `);
+
+  await connection.execute(`
+    CREATE OR REPLACE TRIGGER trg_grievances_defaults
+    BEFORE INSERT ON grievances
+    FOR EACH ROW
+    BEGIN
+      IF :NEW.created_at IS NULL THEN
+        :NEW.created_at := SYSDATE;
+      END IF;
+
+      IF :NEW.problem_status IS NULL THEN
+        :NEW.problem_status := 'UNRESOLVED';
+      END IF;
+    END;
+  `);
+
+  await connection.execute(`
+    CREATE OR REPLACE PROCEDURE sp_reply_grievance(
+      p_grievance_id   IN NUMBER,
+      p_admin_user_id  IN NUMBER,
+      p_admin_reply    IN CLOB
+    )
+    AS
+    BEGIN
+      UPDATE grievances
+      SET admin_reply = p_admin_reply,
+          replied_at = SYSDATE,
+          replied_by = p_admin_user_id,
+          problem_status = 'RESOLVED'
+      WHERE grievance_id = p_grievance_id;
+    END;
+  `);
 }
 
 const formatGrievanceRowsWithImages = async (connection, grievances) => {
@@ -829,10 +935,18 @@ app.post("/items/:id/review", authMiddleware, async (req, res) => {
       { autoCommit: true }
     );
 
-    const ratingResult = await connection.execute(
+    const avgRatingResult = await connection.execute(
       `
-      SELECT ROUND(AVG(rating),1) AS avg_rating,
-             COUNT(*) AS review_count
+      SELECT fn_item_avg_rating(:id) AS avg_rating
+      FROM dual
+      `,
+      { id: itemId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    const reviewCountResult = await connection.execute(
+      `
+      SELECT COUNT(*) AS review_count
       FROM reviews
       WHERE item_id = :id
       `,
@@ -840,7 +954,8 @@ app.post("/items/:id/review", authMiddleware, async (req, res) => {
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
 
-    const { AVG_RATING, REVIEW_COUNT } = ratingResult.rows[0];
+    const { AVG_RATING } = avgRatingResult.rows[0];
+    const { REVIEW_COUNT } = reviewCountResult.rows[0];
 
     await connection.execute(
       `
@@ -1116,11 +1231,13 @@ app.post("/admin/grievances/:id/reply", authMiddleware, async (req, res) => {
 
     await connection.execute(
       `
-      UPDATE grievances
-      SET admin_reply = :reply_text,
-          problem_status = 'RESOLVED',
-          replied_by = :replied_by
-      WHERE grievance_id = :id
+      BEGIN
+        sp_reply_grievance(
+          p_grievance_id => :id,
+          p_admin_user_id => :replied_by,
+          p_admin_reply => :reply_text
+        );
+      END;
       `,
       {
         id: grievanceId,
@@ -1268,7 +1385,9 @@ app.post("/create-checkout-session", authMiddleware, async (req, res) => {
 
 async function startServer() {
   await connectDB();
+  await ensureNormalizedRolesSchema();
   await ensureGrievanceSchema();
+  await ensureDatabaseProgramUnits();
 
   app.listen(5000, () => {
     console.log("Server running on port 5000");
