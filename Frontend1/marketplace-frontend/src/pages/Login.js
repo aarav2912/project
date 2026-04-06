@@ -3,6 +3,7 @@ import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { jwtDecode } from "jwt-decode";
+import API_BASE_URL from "../config/api";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -11,7 +12,7 @@ function Login() {
 
   const handleLogin = async () => {
     try {
-      const res = await axios.post("http://localhost:5000/login", {
+      const res = await axios.post(`${API_BASE_URL}/login`, {
         email,
         password,
       });
@@ -20,7 +21,7 @@ function Login() {
       try {
         const decoded = jwtDecode(res.data.token);
         const role = String(decoded.role || "").toUpperCase();
-        navigate(role === "ADMIN" ? "/admin/grievances" : "/dashboard");
+        navigate(role === "ADMIN" ? "/admin/dashboard" : "/dashboard");
       } catch (decodeErr) {
         navigate("/dashboard");
       }

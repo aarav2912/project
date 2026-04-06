@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
 import { motion } from "framer-motion";
 import CategoryCard from "../components/CategoryCard";
+import API_BASE_URL from "../config/api";
 
 function Dashboard() {
   const [categories, setCategories] = useState([]);
@@ -20,29 +21,26 @@ function Dashboard() {
     if (token) {
       try {
         const decoded = jwtDecode(token);
-        if (String(decoded.role || "").toUpperCase() === "ADMIN") {
-          navigate("/admin/grievances", { replace: true });
-          return;
-        }
         setUsername(decoded.username || "");
       } catch (err) {
         console.error("Invalid token");
+        setUsername("");
       }
     }
 
     axios
-      .get("http://localhost:5000/categories", {
+      .get(`${API_BASE_URL}/categories`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setCategories(Array.isArray(res.data) ? res.data : []))
       .catch((err) => console.log(err));
-  }, [token, navigate]);
+  }, [token]);
 
-  if (token && username === "" && window.location.pathname === "/dashboard") {
+  if (token) {
     try {
       const decoded = jwtDecode(token);
       if (String(decoded.role || "").toUpperCase() === "ADMIN") {
-        return null;
+        return <Navigate to="/admin/dashboard" replace />;
       }
     } catch (err) {
       // ignore and fall through

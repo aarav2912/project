@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import API_BASE_URL from "../config/api";
 
 function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -9,7 +10,7 @@ function ForgotPassword() {
 
   const handleSubmit = async () => {
     try {
-      await axios.post("http://localhost:5000/forgot-password", { email });
+      await axios.post(`${API_BASE_URL}/forgot-password`, { email });
       alert("Reset link sent to your email");
       navigate("/");
     } catch (err) {

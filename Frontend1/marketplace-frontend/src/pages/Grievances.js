@@ -3,6 +3,7 @@ import axios from "axios";
 import { Navigate } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
 import { motion } from "framer-motion";
+import API_BASE_URL from "../config/api";
 
 function Grievances() {
   const [form, setForm] = useState({
@@ -17,7 +18,7 @@ function Grievances() {
 
   const fetchGrievances = useCallback(async () => {
     try {
-      const res = await axios.get("http://localhost:5000/grievances/mine", {
+      const res = await axios.get(`${API_BASE_URL}/grievances/mine`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -53,7 +54,7 @@ function Grievances() {
       });
 
       await axios.post(
-        "http://localhost:5000/grievances",
+        `${API_BASE_URL}/grievances`,
         data,
         {
           headers: {
@@ -189,7 +190,7 @@ function Grievances() {
                     {grievance.IMAGES.map((imageUrl, index) => (
                       <img
                         key={index}
-                        src={`http://localhost:5000${imageUrl}`}
+                        src={`${API_BASE_URL}${imageUrl}`}
                         alt={`grievance-${grievance.GRIEVANCE_ID}-${index}`}
                         className="cart-row__image"
                         style={{ width: "100%", height: "160px" }}

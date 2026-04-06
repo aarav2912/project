@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
+import API_BASE_URL from "../config/api";
 
 function ProductPage() {
   const { id } = useParams();
@@ -16,7 +17,7 @@ function ProductPage() {
 
   const fetchItemDetails = useCallback(async () => {
     try {
-      const res = await axios.get(`http://localhost:5000/items/${id}`, {
+      const res = await axios.get(`${API_BASE_URL}/items/${id}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
@@ -35,7 +36,7 @@ function ProductPage() {
   const handleReviewSubmit = async () => {
     try {
       await axios.post(
-        `http://localhost:5000/items/${id}/review`,
+        `${API_BASE_URL}/items/${id}/review`,
         { rating, review_text: reviewText },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -53,8 +54,16 @@ function ProductPage() {
 
   const handleAddToCart = async () => {
     try {
+      const isAvailable =
+        item && String(item.ITEM_STATUS || "AVAILABLE").toUpperCase() === "AVAILABLE" && Number(item.QUANTITY || 0) > 0;
+
+      if (!isAvailable) {
+        alert("This item is not available any more");
+        return;
+      }
+
       await axios.post(
-        "http://localhost:5000/cart",
+        `${API_BASE_URL}/cart`,
         {
           item_id: item.ITEM_ID,
           quantity: 1,
@@ -67,9 +76,10 @@ function ProductPage() {
       );
 
       alert("Added to cart");
+      fetchItemDetails();
     } catch (err) {
       console.error(err);
-      alert("Failed to add to cart");
+      alert(err.response?.data?.message || "Failed to add to cart");
     }
   };
 
@@ -91,11 +101,14 @@ function ProductPage() {
     );
   }
 
+  const isAvailable =
+    String(item.ITEM_STATUS || "AVAILABLE").toUpperCase() === "AVAILABLE" && Number(item.QUANTITY || 0) > 0;
+
   const activeImage =
     images[currentImage]
-      ? images[currentImage]?.IMAGE_URL?.startsWith("http://localhost:5000")
+      ? images[currentImage]?.IMAGE_URL?.startsWith(API_BASE_URL)
         ? images[currentImage]?.IMAGE_URL
-        : `http://localhost:5000${images[currentImage]?.IMAGE_URL || ""}`
+        : `${API_BASE_URL}${images[currentImage]?.IMAGE_URL || ""}`
       : null;
 
   return (
@@ -110,6 +123,32 @@ function ProductPage() {
         <h1 className="hero-title" style={{ fontSize: "2.3rem" }}>
           {item.TITLE}
         </h1>
+        <div className="hero-stats" style={{ marginTop: "0.9rem" }}>
+          <div className="stat-pill">
+            <div className="stat-pill__label">Item ID</div>
+            <div className="stat-pill__value">#{item.ITEM_ID}</div>
+          </div>
+          <div className="stat-pill">
+            <div className="stat-pill__label">Stock</div>
+            <div className="stat-pill__value">{item.QUANTITY}</div>
+          </div>
+          <div className="stat-pill">
+            <div className="stat-pill__label">Status</div>
+            <div className="stat-pill__value">{isAvailable ? "Available" : "Sold out"}</div>
+          </div>
+          <div className="stat-pill">
+            <div className="stat-pill__label">Seller</div>
+            <div className="stat-pill__value">{item.SELLER_NAME}</div>
+          </div>
+        </div>
+        {!isAvailable && (
+          <div className="support-card__reply" style={{ marginTop: "1rem" }}>
+            <strong>This item is not available any more</strong>
+            <p className="panel-copy" style={{ marginBottom: 0 }}>
+              The listing has sold out or been removed from active sale.
+            </p>
+          </div>
+        )}
         <p className="hero-copy">{item.DESCRIPTION}</p>
       </motion.section>
 
@@ -127,9 +166,9 @@ function ProductPage() {
             <div className="thumb-row">
               {images.map((img, index) => {
                 const thumb =
-                  img.IMAGE_URL?.startsWith("http://localhost:5000")
+                  img.IMAGE_URL?.startsWith(API_BASE_URL)
                     ? img.IMAGE_URL
-                    : `http://localhost:5000${img.IMAGE_URL}`;
+                    : `${API_BASE_URL}${img.IMAGE_URL}`;
 
                 return (
                   <img
@@ -161,8 +200,8 @@ function ProductPage() {
           </p>
 
           <div className="button-row" style={{ marginTop: "1rem" }}>
-            <button className="primary-btn" type="button" onClick={handleAddToCart}>
-              Add to cart
+            <button className="primary-btn" type="button" onClick={handleAddToCart} disabled={!isAvailable}>
+              {isAvailable ? "Add to cart" : "Sold out"}
             </button>
           </div>
         </div>

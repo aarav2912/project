@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
+import API_BASE_URL from "../config/api";
 
 function SellItem() {
   const [categories, setCategories] = useState([]);
@@ -19,7 +20,7 @@ function SellItem() {
 
   useEffect(() => {
     axios
-      .get("http://localhost:5000/categories", {
+      .get(`${API_BASE_URL}/categories`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -57,7 +58,7 @@ function SellItem() {
         data.append("images", img);
       });
 
-      await axios.post("http://localhost:5000/items", data, {
+      await axios.post(`${API_BASE_URL}/items`, data, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

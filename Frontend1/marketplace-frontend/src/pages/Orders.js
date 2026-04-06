@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
+import API_BASE_URL from "../config/api";
 
 function Orders() {
   const [orders, setOrders] = useState([]);
@@ -8,7 +9,7 @@ function Orders() {
 
   useEffect(() => {
     axios
-      .get("http://localhost:5000/orders", {
+      .get(`${API_BASE_URL}/orders`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setOrders(Array.isArray(res.data) ? res.data : []));
@@ -37,11 +38,17 @@ function Orders() {
         ) : (
           orders.map((order) => (
             <div key={order.ORDER_ID} className="order-row surface-panel">
-              <img
-                src={`http://localhost:5000${order.IMAGE_URL}`}
-                alt={order.TITLE}
-                className="order-row__image"
-              />
+              <div className="order-row__media">
+                <img
+                  src={order.IMAGE_URL ? `${API_BASE_URL}${order.IMAGE_URL}` : ""}
+                  alt={order.TITLE}
+                  className="order-row__image"
+                />
+                <div className="order-row__badges">
+                  <span className="id-badge">Order #{order.ORDER_ID}</span>
+                  <span className="id-badge id-badge--secondary">Item #{order.ITEM_ID}</span>
+                </div>
+              </div>
 
               <div>
                 <h3 className="panel-title" style={{ marginBottom: "0.25rem" }}>

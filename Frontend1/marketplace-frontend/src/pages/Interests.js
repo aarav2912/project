@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
+import API_BASE_URL from "../config/api";
 
 function Interests() {
   const [categories, setCategories] = useState([]);
@@ -15,14 +16,14 @@ function Interests() {
 
   useEffect(() => {
     axios
-      .get("http://localhost:5000/categories", {
+      .get(`${API_BASE_URL}/categories`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setCategories(Array.isArray(res.data) ? res.data : []));
   }, [token]);
 
   const handleSubmit = async () => {
-    await axios.post("http://localhost:5000/interests", form, {
+    await axios.post(`${API_BASE_URL}/interests`, form, {
       headers: { Authorization: `Bearer ${token}` },
     });
     alert("Interest saved!");

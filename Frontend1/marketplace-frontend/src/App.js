@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { jwtDecode } from "jwt-decode";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
@@ -16,9 +17,27 @@ import Orders from "./pages/Orders";
 import Success from "./pages/Success";
 import Grievances from "./pages/Grievances";
 import AdminGrievances from "./pages/AdminGrievances";
+import AdminDashboard from "./pages/AdminDashboard";
 import "./App.css";
 
 const THEME_KEY = "marketplace-theme";
+
+function HomeRedirect() {
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    return <Login />;
+  }
+
+  try {
+    const decoded = jwtDecode(token);
+    const role = String(decoded.role || "").toUpperCase();
+    return <Navigate to={role === "ADMIN" ? "/admin/dashboard" : "/dashboard"} replace />;
+  } catch (err) {
+    localStorage.removeItem("token");
+    return <Login />;
+  }
+}
 
 function App() {
   const [theme, setTheme] = useState(() => {
@@ -61,7 +80,7 @@ function App() {
 
       <Router>
         <Routes>
-          <Route path="/" element={<Login />} />
+          <Route path="/" element={<HomeRedirect />} />
           <Route path="/register" element={<Register />} />
           <Route path="/dashboard" element={withProtectedLayout(<Dashboard />)} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -74,6 +93,17 @@ function App() {
           <Route path="/grievances" element={withProtectedLayout(<Grievances />)} />
           <Route path="/items/:id" element={withProtectedLayout(<ProductPage />)} />
           <Route path="/orders" element={withProtectedLayout(<Orders />)} />
+          <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <AppLayout authenticated>
+                  <AdminDashboard />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/admin/grievances"
             element={

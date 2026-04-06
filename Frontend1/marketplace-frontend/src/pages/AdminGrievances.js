@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
+import API_BASE_URL from "../config/api";
 
 function AdminGrievances() {
   const [grievances, setGrievances] = useState([]);
@@ -9,7 +10,7 @@ function AdminGrievances() {
 
   const fetchGrievances = useCallback(async () => {
     try {
-      const res = await axios.get("http://localhost:5000/admin/grievances", {
+      const res = await axios.get(`${API_BASE_URL}/admin/grievances`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -28,7 +29,7 @@ function AdminGrievances() {
 
     try {
       await axios.post(
-        `http://localhost:5000/admin/grievances/${grievanceId}/reply`,
+        `${API_BASE_URL}/admin/grievances/${grievanceId}/reply`,
         { reply_text },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -106,7 +107,7 @@ function AdminGrievances() {
                   {grievance.IMAGES.map((imageUrl, index) => (
                     <img
                       key={index}
-                      src={`http://localhost:5000${imageUrl}`}
+                      src={`${API_BASE_URL}${imageUrl}`}
                       alt={`admin-grievance-${grievance.GRIEVANCE_ID}-${index}`}
                       className="cart-row__image"
                       style={{ width: "100%", height: "160px" }}

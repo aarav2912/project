@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
+import API_BASE_URL from "../config/api";
 
 function Cart() {
   const [cartItems, setCartItems] = useState([]);
@@ -8,7 +9,7 @@ function Cart() {
 
   const fetchCart = useCallback(async () => {
     try {
-      const res = await axios.get("http://localhost:5000/cart", {
+      const res = await axios.get(`${API_BASE_URL}/cart`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setCartItems(Array.isArray(res.data) ? res.data : []);
@@ -28,8 +29,16 @@ function Cart() {
         return;
       }
 
+      const currentItem = cartItems.find((item) => item.ITEM_ID === itemId);
+      const stockQuantity = Number(currentItem?.STOCK_QUANTITY || 0);
+
+      if (stockQuantity > 0 && newQty > stockQuantity) {
+        alert(`Only ${stockQuantity} item(s) left in stock`);
+        return;
+      }
+
       await axios.put(
-        "http://localhost:5000/cart",
+        `${API_BASE_URL}/cart`,
         { item_id: itemId, quantity: newQty },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -37,12 +46,13 @@ function Cart() {
       fetchCart();
     } catch (err) {
       console.error(err);
+      alert(err.response?.data?.message || "Unable to update cart");
     }
   };
 
   const removeItem = async (itemId) => {
     try {
-      await axios.delete(`http://localhost:5000/cart/${itemId}`, {
+      await axios.delete(`${API_BASE_URL}/cart/${itemId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -55,7 +65,7 @@ function Cart() {
   const handleCheckout = async () => {
     try {
       const res = await axios.post(
-        "http://localhost:5000/create-checkout-session",
+        `${API_BASE_URL}/create-checkout-session`,
         {},
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -65,6 +75,7 @@ function Cart() {
       window.location.href = res.data.url;
     } catch (err) {
       console.log(err);
+      alert(err.response?.data?.message || "Unable to proceed to checkout");
     }
   };
 
@@ -95,9 +106,9 @@ function Cart() {
           <div className="surface-panel empty-state">Your cart is empty.</div>
         ) : (
           cartItems.map((item) => {
-            const imageUrl = item.IMAGE_URL?.startsWith("http://localhost:5000")
+            const imageUrl = item.IMAGE_URL?.startsWith(API_BASE_URL)
               ? item.IMAGE_URL
-              : `http://localhost:5000${item.IMAGE_URL}`;
+              : `${API_BASE_URL}${item.IMAGE_URL}`;
 
             return (
               <div key={item.ITEM_ID} className="cart-row surface-panel">
@@ -109,6 +120,11 @@ function Cart() {
                   </h3>
                   <p className="panel-copy" style={{ marginTop: 0 }}>
                     Rs. {item.PRICE}
+                  </p>
+                  <p className="panel-copy" style={{ marginTop: 0 }}>
+                    {Number(item.STOCK_QUANTITY || 0) > 0 && String(item.ITEM_STATUS || "AVAILABLE").toUpperCase() === "AVAILABLE"
+                      ? `Only ${Number(item.STOCK_QUANTITY || 0)} left in stock`
+                      : "This item is not available any more"}
                   </p>
 
                   <div className="button-row" style={{ alignItems: "center" }}>
@@ -126,6 +142,10 @@ function Cart() {
                       className="secondary-btn"
                       type="button"
                       onClick={() => updateQuantity(item.ITEM_ID, Number(item.QUANTITY) + 1)}
+                      disabled={
+                        Number(item.STOCK_QUANTITY || 0) <= 0 ||
+                        Number(item.QUANTITY) >= Number(item.STOCK_QUANTITY)
+                      }
                     >
                       +
                     </button>

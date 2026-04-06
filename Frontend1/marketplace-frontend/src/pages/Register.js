@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import API_BASE_URL from "../config/api";
 
 function Register() {
   const [form, setForm] = useState({
@@ -14,7 +15,7 @@ function Register() {
 
   const handleRegister = async () => {
     try {
-      await axios.post("http://localhost:5000/register", form);
+      await axios.post(`${API_BASE_URL}/register`, form);
       alert("Registered successfully!");
       navigate("/");
     } catch (err) {

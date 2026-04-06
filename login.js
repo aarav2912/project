@@ -18,7 +18,16 @@ const authMiddleware=require("./Middleware/authMiddleware");
 console.log(authMiddleware);
 
 const app = express();
-app.use(cors());
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:3000",
+  "http://127.0.0.1:3000"
+].filter(Boolean);
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
 app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
@@ -156,8 +165,12 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 const ADMIN_ROLE = "ADMIN";
+const SHIPPING_COST_PER_ORDER = 45;
+const PAYMENT_PLATFORM_RATE = 0.029;
+const PAYMENT_PLATFORM_FIXED_FEE = 3;
 
 const isAdmin = (user) => String(user?.role || "").toUpperCase() === ADMIN_ROLE;
+const asNumber = (value) => Number(value || 0);
 
 const queueEmail = (to, subject, html) => emailQueue.add({ to, subject, html });
 
@@ -711,6 +724,7 @@ app.get("/categories/:id/items", authMiddleware,async (req, res) => {
       SELECT i.item_id,
              i.title,
              i.price,
+             i.quantity,
              i.created_at,
              (SELECT image_url
               FROM item_images
@@ -719,6 +733,7 @@ app.get("/categories/:id/items", authMiddleware,async (req, res) => {
       FROM items i
       WHERE i.category_id = :category_id
         AND i.status = 'AVAILABLE'
+        AND i.quantity > 0
       ORDER BY i.created_at DESC
       `,
       { category_id: categoryId },
@@ -745,6 +760,7 @@ app.get("/items/:id", authMiddleware, async (req, res) => {
              i.price,
              i.description,
              i.quantity,
+             i.status AS item_status,
              i.avg_rating,
              i.review_count,
              u.username AS seller_name,
@@ -801,7 +817,66 @@ app.get("/items/:id", authMiddleware, async (req, res) => {
 app.post("/cart", authMiddleware, async (req, res) => {
   try {
     const connection = getConnection();
-    const { item_id, quantity } = req.body;
+    const itemId = parseInt(req.body.item_id);
+    const requestedQuantity = parseInt(req.body.quantity || 1);
+
+    if (!Number.isInteger(itemId) || !Number.isInteger(requestedQuantity) || requestedQuantity < 1) {
+      return res.status(400).json({ message: "Invalid cart quantity" });
+    }
+
+    const stockResult = await connection.execute(
+      `
+      SELECT i.quantity AS stock_quantity,
+             i.status AS item_status
+      FROM items i
+      WHERE i.item_id = :item_id
+      `,
+      {
+        item_id: itemId
+      },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    if (stockResult.rows.length === 0) {
+      return res.status(404).json({ message: "Item not found" });
+    }
+
+    const stockRow = stockResult.rows[0];
+    const stockQuantity = asNumber(stockRow.STOCK_QUANTITY);
+    const itemStatus = String(stockRow.ITEM_STATUS || "").toUpperCase();
+
+    if (itemStatus !== "AVAILABLE" || stockQuantity <= 0) {
+      return res.status(409).json({ message: "This item is not available any more" });
+    }
+
+    if (requestedQuantity > stockQuantity) {
+      return res.status(409).json({
+        message: `Only ${stockQuantity} item(s) left in stock`
+      });
+    }
+
+    const stockUpdate = await connection.execute(
+      `
+      UPDATE items
+      SET quantity = quantity - :quantity,
+          status = CASE
+            WHEN quantity - :quantity <= 0 THEN 'SOLD'
+            ELSE 'AVAILABLE'
+          END
+      WHERE item_id = :item_id
+        AND status = 'AVAILABLE'
+        AND quantity >= :quantity
+      `,
+      {
+        item_id: itemId,
+        quantity: requestedQuantity
+      },
+      { autoCommit: false }
+    );
+
+    if (stockUpdate.rowsAffected === 0) {
+      return res.status(409).json({ message: "This item is not available any more" });
+    }
 
     await connection.execute(
       `
@@ -816,17 +891,25 @@ app.post("/cart", authMiddleware, async (req, res) => {
       `,
       {
         user_id: req.user.user_id,
-        item_id,
-        quantity
+        item_id: itemId,
+        quantity: requestedQuantity
       },
-      { autoCommit: true }
+      { autoCommit: false }
     );
+
+    await connection.commit();
 
     res.json({ message: "Added to cart" });
 
   } catch (err) {
+    try {
+      const connection = getConnection();
+      await connection.rollback();
+    } catch (rollbackErr) {
+      console.error("Rollback failed:", rollbackErr);
+    }
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(err.statusCode || 500).json({ message: err.message || "Server error" });
   }
 });
 
@@ -840,6 +923,8 @@ app.get("/cart", authMiddleware, async (req, res) => {
              c.quantity,
              i.title,
              i.price,
+             i.quantity AS stock_quantity,
+             i.status AS item_status,
              (SELECT image_url
               FROM item_images
               WHERE item_id = i.item_id
@@ -863,10 +948,98 @@ app.get("/cart", authMiddleware, async (req, res) => {
 app.put("/cart", authMiddleware, async (req, res) => {
   try {
     const connection = getConnection();
-    const { item_id, quantity } = req.body;
+    const itemId = parseInt(req.body.item_id);
+    const requestedQuantity = parseInt(req.body.quantity);
 
-    if (quantity < 1) {
+    if (!Number.isInteger(itemId) || !Number.isInteger(requestedQuantity) || requestedQuantity < 1) {
       return res.status(400).json({ message: "Invalid quantity" });
+    }
+
+    const stockResult = await connection.execute(
+      `
+      SELECT i.quantity AS stock_quantity,
+             i.status AS item_status
+      FROM items i
+      WHERE i.item_id = :item_id
+      `,
+      { item_id: itemId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    if (stockResult.rows.length === 0) {
+      return res.status(404).json({ message: "Item not found" });
+    }
+
+    const stockRow = stockResult.rows[0];
+    const stockQuantity = asNumber(stockRow.STOCK_QUANTITY);
+    const itemStatus = String(stockRow.ITEM_STATUS || "").toUpperCase();
+
+    const existingCartResult = await connection.execute(
+      `
+      SELECT quantity
+      FROM cart
+      WHERE user_id = :user_id AND item_id = :item_id
+      `,
+      {
+        user_id: req.user.user_id,
+        item_id: itemId
+      },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    if (existingCartResult.rows.length === 0) {
+      return res.status(404).json({ message: "Item not found in cart" });
+    }
+
+    const currentCartQuantity = asNumber(existingCartResult.rows[0].QUANTITY);
+    const delta = requestedQuantity - currentCartQuantity;
+
+    if (delta === 0) {
+      return res.json({ message: "Cart updated" });
+    }
+
+    if (delta > 0 && (itemStatus !== "AVAILABLE" || stockQuantity < delta)) {
+      return res.status(409).json({ message: "This item is not available any more" });
+    }
+
+    if (delta > 0) {
+      const stockUpdate = await connection.execute(
+        `
+        UPDATE items
+        SET quantity = quantity - :delta,
+            status = CASE
+              WHEN quantity - :delta <= 0 THEN 'SOLD'
+              ELSE 'AVAILABLE'
+            END
+        WHERE item_id = :item_id
+          AND status = 'AVAILABLE'
+          AND quantity >= :delta
+        `,
+        {
+          item_id: itemId,
+          delta
+        },
+        { autoCommit: false }
+      );
+
+      if (stockUpdate.rowsAffected === 0) {
+        return res.status(409).json({ message: "This item is not available any more" });
+      }
+    } else {
+      const restoreAmount = Math.abs(delta);
+      await connection.execute(
+        `
+        UPDATE items
+        SET quantity = quantity + :restore_amount,
+            status = 'AVAILABLE'
+        WHERE item_id = :item_id
+        `,
+        {
+          item_id: itemId,
+          restore_amount: restoreAmount
+        },
+        { autoCommit: false }
+      );
     }
 
     await connection.execute(
@@ -877,11 +1050,13 @@ app.put("/cart", authMiddleware, async (req, res) => {
       `,
       {
         user_id: req.user.user_id,
-        item_id,
-        quantity
+        item_id: itemId,
+        quantity: requestedQuantity
       },
-      { autoCommit: true }
+      { autoCommit: false }
     );
+
+    await connection.commit();
 
     res.json({ message: "Cart updated" });
 
@@ -894,6 +1069,44 @@ app.put("/cart", authMiddleware, async (req, res) => {
 app.delete("/cart/:item_id", authMiddleware, async (req, res) => {
   try {
     const connection = getConnection();
+    const itemId = parseInt(req.params.item_id);
+
+    if (!Number.isInteger(itemId)) {
+      return res.status(400).json({ message: "Invalid item" });
+    }
+
+    const cartResult = await connection.execute(
+      `
+      SELECT quantity
+      FROM cart
+      WHERE user_id = :user_id AND item_id = :item_id
+      `,
+      {
+        user_id: req.user.user_id,
+        item_id: itemId
+      },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    if (cartResult.rows.length === 0) {
+      return res.json({ message: "Item removed from cart" });
+    }
+
+    const cartQuantity = asNumber(cartResult.rows[0].QUANTITY);
+
+    await connection.execute(
+      `
+      UPDATE items
+      SET quantity = quantity + :restore_amount,
+          status = 'AVAILABLE'
+      WHERE item_id = :item_id
+      `,
+      {
+        item_id: itemId,
+        restore_amount: cartQuantity
+      },
+      { autoCommit: false }
+    );
 
     await connection.execute(
       `
@@ -902,10 +1115,12 @@ app.delete("/cart/:item_id", authMiddleware, async (req, res) => {
       `,
       {
         user_id: req.user.user_id,
-        item_id: req.params.item_id
+        item_id: itemId
       },
-      { autoCommit: true }
+      { autoCommit: false }
     );
+
+    await connection.commit();
 
     res.json({ message: "Item removed from cart" });
 
@@ -1279,6 +1494,144 @@ app.post("/admin/grievances/:id/reply", authMiddleware, async (req, res) => {
   }
 });
 
+app.get("/admin/analytics", authMiddleware, async (req, res) => {
+  try {
+    if (!isAdmin(req.user)) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const connection = getConnection();
+
+    const summaryResult = await connection.execute(
+      `
+      SELECT
+        (SELECT COUNT(*) FROM orders) AS total_orders,
+        NVL((SELECT SUM(total_amount) FROM orders), 0) AS total_revenue,
+        (SELECT COUNT(*) FROM items) AS total_items,
+        NVL((SELECT SUM(CASE WHEN status = 'AVAILABLE' THEN 1 ELSE 0 END) FROM items), 0) AS available_items,
+        NVL((SELECT SUM(CASE WHEN status = 'SOLD' THEN 1 ELSE 0 END) FROM items), 0) AS sold_items
+      FROM dual
+      `,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    const popularItemsResult = await connection.execute(
+      `
+      SELECT
+        i.item_id,
+        i.title,
+        COUNT(*) AS order_count,
+        NVL(SUM(o.total_amount), 0) AS revenue
+      FROM orders o
+      JOIN items i ON o.item_id = i.item_id
+      GROUP BY i.item_id, i.title
+      ORDER BY COUNT(*) DESC, NVL(SUM(o.total_amount), 0) DESC
+      FETCH FIRST 5 ROWS ONLY
+      `,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    const categorySalesResult = await connection.execute(
+      `
+      SELECT
+        c.category_id,
+        c.category_name,
+        COUNT(*) AS order_count,
+        NVL(SUM(o.total_amount), 0) AS revenue
+      FROM orders o
+      JOIN items i ON o.item_id = i.item_id
+      JOIN categories c ON i.category_id = c.category_id
+      GROUP BY c.category_id, c.category_name
+      ORDER BY COUNT(*) DESC, NVL(SUM(o.total_amount), 0) DESC
+      FETCH FIRST 6 ROWS ONLY
+      `,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    const monthlyResult = await connection.execute(
+      `
+      SELECT
+        TO_CHAR(TRUNC(order_date, 'MM'), 'YYYY-MM') AS month_label,
+        COUNT(*) AS order_count,
+        NVL(SUM(total_amount), 0) AS revenue
+      FROM orders
+      GROUP BY TRUNC(order_date, 'MM')
+      ORDER BY TRUNC(order_date, 'MM') DESC
+      FETCH FIRST 6 ROWS ONLY
+      `,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    const summaryRow = summaryResult.rows[0] || {};
+    const totalOrders = asNumber(summaryRow.TOTAL_ORDERS);
+    const totalRevenue = asNumber(summaryRow.TOTAL_REVENUE);
+    const shippingLoss = totalOrders * SHIPPING_COST_PER_ORDER;
+    const paymentFee = (totalRevenue * PAYMENT_PLATFORM_RATE) + (totalOrders * PAYMENT_PLATFORM_FIXED_FEE);
+    const estimatedLoss = shippingLoss + paymentFee;
+    const netProfit = totalRevenue - estimatedLoss;
+
+    const popularItems = popularItemsResult.rows.map((row) => ({
+      item_id: row.ITEM_ID,
+      title: row.TITLE,
+      order_count: asNumber(row.ORDER_COUNT),
+      revenue: asNumber(row.REVENUE)
+    }));
+
+    const categorySales = categorySalesResult.rows.map((row) => ({
+      category_id: row.CATEGORY_ID,
+      category_name: row.CATEGORY_NAME,
+      order_count: asNumber(row.ORDER_COUNT),
+      revenue: asNumber(row.REVENUE)
+    }));
+
+    const monthly = monthlyResult.rows
+      .map((row) => {
+        const monthOrders = asNumber(row.ORDER_COUNT);
+        const monthRevenue = asNumber(row.REVENUE);
+        const monthShipping = monthOrders * SHIPPING_COST_PER_ORDER;
+        const monthPaymentFee = (monthRevenue * PAYMENT_PLATFORM_RATE) + (monthOrders * PAYMENT_PLATFORM_FIXED_FEE);
+        const monthLoss = monthShipping + monthPaymentFee;
+        const monthNet = monthRevenue - monthLoss;
+
+        return {
+          month: row.MONTH_LABEL || "",
+          order_count: monthOrders,
+          revenue: monthRevenue,
+          shipping_loss: monthShipping,
+          payment_fee: monthPaymentFee,
+          loss: monthLoss,
+          net_profit: monthNet
+        };
+      })
+      .reverse();
+
+    res.json({
+      summary: {
+        total_orders: totalOrders,
+        total_revenue: totalRevenue,
+        total_items: asNumber(summaryRow.TOTAL_ITEMS),
+        available_items: asNumber(summaryRow.AVAILABLE_ITEMS),
+        sold_items: asNumber(summaryRow.SOLD_ITEMS),
+        shipping_loss: shippingLoss,
+        payment_fee: paymentFee,
+        estimated_loss: estimatedLoss,
+        net_profit: netProfit,
+        most_popular_item: popularItems[0] || null
+      },
+      popular_items: popularItems,
+      category_sales: categorySales,
+      monthly
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 app.get("/orders", authMiddleware, async (req, res) => {
   try {
     const connection = getConnection();
@@ -1286,6 +1639,7 @@ app.get("/orders", authMiddleware, async (req, res) => {
     const result = await connection.execute(
       `
       SELECT o.order_id,
+             o.item_id,
              o.status,
              o.total_amount,
              o.order_date,
@@ -1315,7 +1669,7 @@ app.post("/create-checkout-session", authMiddleware, async (req, res) => {
 
     const cartItems = await connection.execute(
       `
-      SELECT c.item_id, c.quantity, i.title, i.price
+      SELECT c.item_id, c.quantity, i.title, i.price, i.quantity AS stock_quantity, i.status AS item_status
       FROM cart c
       JOIN items i ON c.item_id = i.item_id
       WHERE c.user_id = :user_id
@@ -1345,9 +1699,11 @@ app.post("/create-checkout-session", authMiddleware, async (req, res) => {
           quantity: item.QUANTITY,
           amount
         },
-        { autoCommit: true }
+        { autoCommit: false }
       );
     }
+
+    await connection.commit();
 
     const lineItems = cartItems.rows.map(item => ({
       price_data: {
@@ -1364,8 +1720,8 @@ app.post("/create-checkout-session", authMiddleware, async (req, res) => {
       payment_method_types: ["card"],
       line_items: lineItems,
       mode: "payment",
-      success_url: "http://localhost:3000/success",
-      cancel_url: "http://localhost:3000/cart",
+      success_url: `${process.env.FRONTEND_URL || "http://localhost:3000"}/success`,
+      cancel_url: `${process.env.FRONTEND_URL || "http://localhost:3000"}/cart`,
       metadata: {
         user_id: req.user.user_id
       }
@@ -1374,8 +1730,17 @@ app.post("/create-checkout-session", authMiddleware, async (req, res) => {
     res.json({ url: session.url });
 
   } catch (err) {
+    try {
+      const connection = getConnection();
+      await connection.rollback();
+    } catch (rollbackErr) {
+      console.error("Rollback failed:", rollbackErr);
+    }
+
     console.error(err);
-    res.status(500).json({ message: "Stripe error" });
+    res.status(err.statusCode || 500).json({
+      message: err.statusCode === 409 ? err.message : "Stripe error"
+    });
   }
 });
 
@@ -1389,8 +1754,9 @@ async function startServer() {
   await ensureGrievanceSchema();
   await ensureDatabaseProgramUnits();
 
-  app.listen(5000, () => {
-    console.log("Server running on port 5000");
+  const port = process.env.PORT || 5000;
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
   });
 }
 

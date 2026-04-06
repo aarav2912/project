@@ -3,6 +3,7 @@ import axios from "axios";
 import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import ItemCard from "../components/ItemCard";
+import API_BASE_URL from "../config/api";
 
 function CategoryPage() {
   const { id } = useParams();
@@ -11,7 +12,7 @@ function CategoryPage() {
 
   useEffect(() => {
     axios
-      .get(`http://localhost:5000/categories/${id}/items`, {
+      .get(`${API_BASE_URL}/categories/${id}/items`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setItems(Array.isArray(res.data) ? res.data : []))
